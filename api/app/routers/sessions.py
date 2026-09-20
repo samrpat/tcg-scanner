@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -607,6 +609,40 @@ def photo_plan(items, order: list[tuple[ImageKind, str]]) -> dict:
     }
 
 
+class _Sink:
+    """A write-only file for `zipfile`, which hands back whatever has been written.
+
+    `zipfile` needs somewhere to write and a `tell()` to track offsets. It does not need to
+    seek, as long as it knows it cannot — with `seekable()` false it writes data descriptors
+    after each entry instead of going back to patch the headers.
+
+    So this pretends to be a file, keeps only what has not been sent yet, and `drain()` empties
+    it. Peak memory is one photograph, not one archive.
+    """
+
+    def __init__(self) -> None:
+        self._chunks: list[bytes] = []
+        self._written = 0
+
+    def write(self, data: bytes) -> int:
+        self._chunks.append(bytes(data))
+        self._written += len(data)
+        return len(data)
+
+    def tell(self) -> int:
+        return self._written
+
+    def flush(self) -> None:
+        return None
+
+    def seekable(self) -> bool:
+        return False
+
+    def drain(self) -> Iterator[bytes]:
+        chunks, self._chunks = self._chunks, []
+        yield from chunks
+
+
 def _safe_name(name: str) -> str:
     """A section name as a folder name. Sections are named by hand and a name with a slash in
     it would otherwise invent a directory level inside the zip."""
@@ -948,7 +984,6 @@ async def download_photos(
     `kind=listing` gives the presentation renders, which is what a listing wants.
     `kind=all` adds the originals, for anything that would rather do its own cropping.
     """
-    import io
     import zipfile
 
     from app.storage import get_storage
@@ -1008,38 +1043,46 @@ async def download_photos(
         folders[None] = "00 unsorted"
 
     storage = get_storage()
-    buffer = io.BytesIO()
-    written = 0
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
-        # ZIP_STORED, not DEFLATE: JPEGs are already compressed, so deflating them spends CPU
-        # on a Pi to save almost nothing.
-        for item in items:
-            by_kind = {image.kind: image for image in item.images}
-            # Numbered per card, in sequence, rather than by a fixed position in ORDER. Most
-            # cards carry no extra shots, and a fixed scheme would leave every one of them
-            # with a gap between -2-back and -6-corner — which reads as a missing photograph.
-            position = 0
-            for image_kind, label in ORDER:
-                stored = by_kind.get(image_kind)
-                if stored is None:
-                    continue
-                position += 1
-                try:
-                    name = f"{item.sku}-{position}-{label}.jpg"
-                    if layout == "folders":
-                        path = f"{item.sku}/{name}"
-                    elif layout == "count":
-                        path = f"{group_folder(counts[item.sku])}/{name}"
-                    else:
-                        path = name
-                    if by_section:
-                        path = f"{folders.get(item.section_id, '00 unsorted')}/{path}"
-                    archive.writestr(path, storage.get(stored.path))
-                    written += 1
-                except Exception as exc:  # noqa: BLE001 - one missing file, not a failed zip
-                    log.warning("photos_zip.skipped", sku=item.sku, error=str(exc))
 
-    if written == 0:
+    # Streamed, not assembled.
+    #
+    # This used to build the whole archive in a BytesIO and return it in one piece. At 110
+    # cards that is a two-gigabyte object inside a container limited to one, so the process
+    # was OOM-killed and nginx answered 502 — the download did not fail, the API died. And it
+    # would have died on a Pi far sooner, because the ceiling was never the real limit: the
+    # archive grows with the collection and memory does not.
+    #
+    # Writing to a temporary file instead would bound memory but doubles the disk traffic and
+    # makes the browser wait for the whole thing before the first byte. `zipfile` can write to
+    # an unseekable stream, so the zip is generated as it is sent: one file in memory at a
+    # time, whatever the batch.
+    #
+    # The cost is no Content-Length, so the browser shows an unknown-size download. That is a
+    # progress bar against never finishing at all.
+    ordered = []
+    for item in items:
+        by_kind = {image.kind: image for image in item.images}
+        # Numbered per card, in sequence, rather than by a fixed position in ORDER. Most
+        # cards carry no extra shots, and a fixed scheme would leave every one of them with
+        # a gap between -2-back and -6-corner — which reads as a missing photograph.
+        position = 0
+        for image_kind, label in ORDER:
+            stored = by_kind.get(image_kind)
+            if stored is None:
+                continue
+            position += 1
+            name = f"{item.sku}-{position}-{label}.jpg"
+            if layout == "folders":
+                path = f"{item.sku}/{name}"
+            elif layout == "count":
+                path = f"{group_folder(counts[item.sku])}/{name}"
+            else:
+                path = name
+            if by_section:
+                path = f"{folders.get(item.section_id, '00 unsorted')}/{path}"
+            ordered.append((path, stored.path, item.sku))
+
+    if not ordered:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -1049,13 +1092,34 @@ async def download_photos(
         )
 
     safe = re.sub(r"[^A-Za-z0-9._-]+", "-", target.name).strip("-") or "batch"
-    log.info("photos_zip.built", session=str(session_id), files=written)
-    return Response(
-        content=buffer.getvalue(),
+    log.info(
+        "photos_zip.streaming",
+        session=str(session_id),
+        files=len(ordered),
+        cards=len(items),
+    )
+
+    def build() -> Iterator[bytes]:
+        sink = _Sink()
+        # ZIP_STORED, not DEFLATE: JPEGs are already compressed, so deflating them spends CPU
+        # on a Pi to save almost nothing.
+        with zipfile.ZipFile(sink, "w", zipfile.ZIP_STORED) as archive:
+            for path, source, sku in ordered:
+                try:
+                    payload = storage.get(source)
+                except Exception as exc:  # noqa: BLE001 - one missing file, not a failed zip
+                    log.warning("photos_zip.skipped", sku=sku, error=str(exc))
+                    continue
+                archive.writestr(path, payload)
+                yield from sink.drain()
+        yield from sink.drain()
+
+    return StreamingResponse(
+        build(),
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{safe}-photos.zip"',
-            "X-Photo-Count": str(written),
+            "X-Photo-Count": str(len(ordered)),
             "X-Card-Count": str(len(items)),
             # e.g. "6x10; 7x3" — ten cards with six photographs, three with seven. The numbers
             # to type into the uploader, and how many listings each will produce.
@@ -1067,62 +1131,6 @@ async def download_photos(
             ),
         },
     )
-
-
-@router.get("/{session_id}/photo-groups")
-async def photo_groups(
-    session_id: uuid.UUID,
-    kind: str = Query("listing", pattern="^(listing|all)$"),
-    corners: bool | None = Query(None),
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
-) -> dict:
-    """What a download of this batch would contain, grouped by photographs per card.
-
-    Answers the question a bulk upload actually asks: how many photographs does each card have?
-    A batch where the answer is not a single number has to be uploaded in more than one go, and
-    knowing that before the upload is considerably better than working it out from a listing
-    illustrated with the wrong card.
-    """
-    target = (
-        await session.execute(
-            select(ScanSession).where(
-                ScanSession.id == session_id, ScanSession.user_id == user.id
-            )
-        )
-    ).scalar_one_or_none()
-    if target is None:
-        raise HTTPException(status_code=404, detail="no such session")
-
-    items = (
-        (
-            await session.execute(
-                select(InventoryItem)
-                .options(selectinload(InventoryItem.images))
-                .where(
-                    InventoryItem.user_id == user.id,
-                    InventoryItem.session_id == target.id,
-                )
-                .order_by(InventoryItem.sku)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    use_corners = target.corner_shots if corners is None else corners
-    plan = photo_plan(items, export_order(use_corners, kind))
-    for group in plan["groups"]:
-        group["folder"] = group_folder(group["photos"])
-    return {
-        "session_id": str(target.id),
-        "name": target.name,
-        "corners": use_corners,
-        "cards": len(items),
-        **plan,
-        # One number for every card means one upload; more than one means more than one.
-        "uploads_needed": len(plan["groups"]),
-    }
 
 
 @router.post("/{session_id}/archive")

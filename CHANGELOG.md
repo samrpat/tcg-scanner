@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-20 (download fix)
+
+- **Fixed: the photo download returned 502.** The endpoint built the whole archive in memory —
+  two gigabytes for a 110-card batch, inside a container limited to one — so requesting it
+  OOM-killed the API rather than failing the download. It streams now: peak memory **108 MB**
+  regardless of batch size, measured at 1.06 GB in 15.7 seconds on the batch that was failing.
+  See D-182.
+
 ## 2026-09-20 (fix)
 
 - **Typing a section name on the Scan screen took a photograph on every space.** The shutter's

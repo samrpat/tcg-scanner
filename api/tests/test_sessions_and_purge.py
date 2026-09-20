@@ -406,3 +406,62 @@ def test_the_scan_screen_learns_its_section_without_another_request():
     source = inspect.getsource(pending)
     assert "active_section" in source
     assert "sections" in source
+
+
+def test_the_photo_zip_is_streamed_not_assembled():
+    """It used to build the whole archive in a BytesIO. At 110 cards that is a two-gigabyte
+    object inside a container limited to one: the process was OOM-killed and nginx answered
+    502, so the download did not fail — the API died, taking the scan screen with it.
+
+    The ceiling was never the real limit. The archive grows with the collection and memory
+    does not, so this had to stop buffering rather than get a bigger allowance.
+    """
+    from app.routers.sessions import download_photos
+
+    source = inspect.getsource(download_photos)
+    assert "StreamingResponse" in source
+    assert "io.BytesIO" not in source
+    assert "buffer.getvalue()" not in source
+
+
+def test_the_zip_sink_refuses_to_seek():
+    """`zipfile` only writes data descriptors — rather than seeking back to patch each local
+    header — when it knows the stream cannot seek. Reporting seekable would make it try, and
+    the archive would be silently malformed."""
+    from app.routers.sessions import _Sink
+
+    sink = _Sink()
+    assert sink.seekable() is False
+
+    sink.write(b"hello")
+    assert sink.tell() == 5
+    assert list(sink.drain()) == [b"hello"]
+    # Drained means gone: memory is one photograph, not one archive.
+    assert list(sink.drain()) == []
+    # ...but the offset keeps counting, because the zip's own bookkeeping depends on it.
+    sink.write(b"!")
+    assert sink.tell() == 6
+
+
+def test_a_streamed_zip_is_a_real_zip():
+    """End to end through the same sink the endpoint uses, because "it produced bytes" and
+    "it produced an archive" are different claims."""
+    import io
+    import zipfile
+
+    from app.routers.sessions import _Sink
+
+    sink = _Sink()
+    out = bytearray()
+    with zipfile.ZipFile(sink, "w", zipfile.ZIP_STORED) as archive:
+        for i in range(5):
+            archive.writestr(f"CARD-{i:06d}-1-front.jpg", b"x" * 1000)
+            for chunk in sink.drain():
+                out += chunk
+    for chunk in sink.drain():
+        out += chunk
+
+    read = zipfile.ZipFile(io.BytesIO(bytes(out)))
+    assert read.testzip() is None
+    assert len(read.namelist()) == 5
+    assert read.read("CARD-000003-1-front.jpg") == b"x" * 1000

@@ -9,7 +9,7 @@ database, same photographs, same batches; switching is a restart.
 
 | | |
 |---|---|
-| Tests | **467 passing** (`make test`) |
+| Tests | **470 passing** (`make test`) |
 | Endpoint smoke checks | **41 scanner / 69 full** (`make smoke`, mode-aware) |
 | Lint | `ruff check` clean; TypeScript clean |
 | Migrations | **0001 → 0027**, 24 tables |
