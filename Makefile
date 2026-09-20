@@ -145,9 +145,13 @@ benchmark: ## Run detection over every stored original and score it
 
 test: ## Run the test suite
 	@# Source is bind-mounted so editing a test does not require rebuilding the image.
+	@# `web` is mounted read-only because a handful of tests assert properties of the
+	@# frontend that have no Python to exercise — the shutter key not firing into a text
+	@# field, for one. A test that silently skips when a mount is missing is not a test.
 	$(COMPOSE) run --rm -e TESTING=1 \
 		-v "$(CURDIR)/api/app:/srv/app" \
 		-v "$(CURDIR)/api/tests:/srv/tests" \
+		-v "$(CURDIR)/web:/web:ro" \
 		api pytest -q $(ARGS)
 
 photos-on: ## Share card photos publicly so eBay can fetch them

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-20 (fix)
+
+- **Typing a section name on the Scan screen took a photograph on every space.** The shutter's
+  Space/Enter binding had no check for whether you were typing, and because it calls
+  `preventDefault` the space never reached the field either — the name was impossible to type.
+  Enter shot a card instead of submitting it. Both screens now share one guard, and the
+  shutter is inert while the section sheet is open. See D-181.
+
 ## 2026-09-20 (sections, properly)
 
 - **Sections are drawn as panels**, not headings over a continuous stream — bordered, with a

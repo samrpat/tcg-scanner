@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type InventoryRow } from "./api";
 import { useCamera } from "./useCamera";
+import { isTyping } from "./keys";
 import Hint from "./Hint";
 
 /**
@@ -132,7 +133,7 @@ export default function Extras() {
   // skip, because skip is the answer on most cards and it should never need the screen.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (isTyping(e)) return;
       if (e.code === "Space" || e.code === "Enter") {
         e.preventDefault();
         capture(true);

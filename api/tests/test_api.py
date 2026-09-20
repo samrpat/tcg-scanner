@@ -237,3 +237,30 @@ def test_scanner_mode_serves_the_scanner_and_nothing_else(scanner_client, client
     assert any(p.startswith("/api/ebay") for p in full)
     assert any(p.startswith("/api/conditioning") for p in full)
     assert all(p in full for p in scanning)
+
+
+def test_the_shutter_key_never_fires_while_someone_is_typing():
+    """Both camera screens bind Space and Enter to the shutter so a Bluetooth remote works as
+    a pedal. Any text field on the same screen then fires the camera on every space — and
+    because the handler calls preventDefault, the space does not even reach the field.
+
+    Naming a section on the scan screen was impossible to type and took a photograph per word.
+    Extras had a partial guard; Scan had none. Asserted against the source because this is a
+    browser-event property with no Python to exercise.
+    """
+    from pathlib import Path
+
+    # Mounted at /web by `make test`; parents[2] resolves there from /srv/tests.
+    web = Path(__file__).resolve().parents[2] / "web" / "src"
+    assert web.is_dir(), "web/ is not mounted — see the `test` target in the Makefile"
+    shared = (web / "keys.ts").read_text()
+    for kind in ("HTMLInputElement", "HTMLTextAreaElement", "HTMLSelectElement"):
+        assert kind in shared, f"the typing guard ignores {kind}"
+    assert "isContentEditable" in shared
+
+    for screen in ("Scan.tsx", "Extras.tsx"):
+        source = (web / screen).read_text()
+        assert 'from "./keys"' in source, f"{screen} does not use the shared guard"
+        # The guard must come before preventDefault, or the keystroke is eaten anyway.
+        guard = source.index("isTyping(e)")
+        assert guard < source.index("e.preventDefault()"), f"{screen} guards too late"

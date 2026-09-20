@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePolling } from "./usePolling";
+import { isTyping } from "./keys";
 import { CAMERA_NEEDS_HTTPS, isSecureEnough, secureUrl } from "./secure";
 import { api, type Pending, type RecentItem } from "./api";
 
@@ -268,8 +269,13 @@ export default function Scan() {
 
   // Space and Enter fire the shutter too, so a cheap Bluetooth remote works as a foot/thumb
   // pedal. That is the difference between a comfortable run and a sore hand at card 500.
+  //
+  // Not while typing, and not while the section sheet is open. Without the first, naming a
+  // section took a photograph on every space and the space never reached the field; without
+  // the second, Enter shot a card instead of submitting the name.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e) || picking) return;
       if (e.code === "Space" || e.code === "Enter") {
         e.preventDefault();
         shoot();
@@ -277,7 +283,7 @@ export default function Scan() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shoot]);
+  }, [shoot, picking]);
 
   const last = recent[0];
 
