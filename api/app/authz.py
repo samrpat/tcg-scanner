@@ -36,13 +36,20 @@ OPEN_PREFIXES = ("/health", "/api/auth")
 _CACHE: dict[str, tuple[str, float]] = {}
 _CACHE_TTL = 30.0
 
+# Whether the operator chose, at first run, to run without a password. Cached for the same
+# reason and read only when a request has no session — which on an open instance is every
+# request, hence the cache, and on a closed one is only the refusals.
+_OPEN_INSTANCE: tuple[bool, float] | None = None
+
 
 def forget(token: str) -> None:
     _CACHE.pop(token, None)
 
 
 def forget_all() -> None:
+    global _OPEN_INSTANCE
     _CACHE.clear()
+    _OPEN_INSTANCE = None
 
 
 def _cached(token: str) -> str | None:
@@ -80,6 +87,38 @@ async def authenticate(request: Request) -> None:
         _CACHE[token] = (str(user.id), time.monotonic())
 
 
+async def instance_is_open() -> bool:
+    """Whether this instance was set up without a password.
+
+    A deliberate choice made at first run, stored in the database rather than the environment
+    so it can be made — and reversed — from the screen rather than from a file and a restart.
+    """
+    global _OPEN_INSTANCE
+    if _OPEN_INSTANCE is not None:
+        value, checked = _OPEN_INSTANCE
+        if time.monotonic() - checked <= _CACHE_TTL:
+            return value
+
+    from sqlalchemy import select
+
+    from app.models import User
+    from app.services.seed import DEFAULT_USER_EMAIL
+
+    try:
+        async with new_session() as session:
+            user = (
+                await session.execute(select(User).where(User.email == DEFAULT_USER_EMAIL))
+            ).scalar_one_or_none()
+            # An unclaimed instance is not an open one. "No password yet" means the choice has
+            # not been made, and the safe reading of an unanswered question is no.
+            value = bool(user and user.auth_disabled)
+    except Exception:  # noqa: BLE001 - a database that cannot answer does not mean "let them in"
+        return False
+
+    _OPEN_INSTANCE = (value, time.monotonic())
+    return value
+
+
 async def middleware(request: Request, call_next):
     """Authenticate, then refuse anything outside the allowlist without a session."""
     await authenticate(request)
@@ -88,6 +127,9 @@ async def middleware(request: Request, call_next):
         return await call_next(request)
 
     if request.state.user_id is not None:
+        return await call_next(request)
+
+    if await instance_is_open():
         return await call_next(request)
 
     # Refused without touching the database, deliberately.

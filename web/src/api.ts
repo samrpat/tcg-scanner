@@ -266,12 +266,37 @@ export const api = {
       required: boolean;
       claimed: boolean;
       authenticated: boolean;
+      has_password: boolean;
+      open_by_choice: boolean;
+      has_recovery_code: boolean;
       min_password_length: number;
     }>("/api/auth/status"),
 
-  /** Set the first password on an instance that has never had one, and log in. */
-  claimInstance: (password: string, label?: string) =>
-    post<{ claimed: boolean }>("/api/auth/claim", { password, label }),
+  /** Finish first-run setup. `null` means a deliberate decision to have no password —
+   *  different from an instance nobody has set up, which serves nothing at all. */
+  claimInstance: (password: string | null, label?: string) =>
+    post<{ claimed: boolean; password: boolean; recovery_code?: string }>(
+      "/api/auth/claim",
+      password === null ? {} : { password, label },
+    ),
+
+  /** Set a new password using the recovery code. Signs every device out. */
+  recoverWithCode: (code: string, newPassword: string) =>
+    post<{ recovered: boolean; recovery_code: string }>("/api/auth/recover", {
+      code,
+      new_password: newPassword,
+    }),
+
+  /** A fresh recovery code, invalidating the old one. Readable exactly once. */
+  regenerateRecovery: () =>
+    post<{ recovery_code: string }>("/api/auth/recovery-code", {}),
+
+  /** Put a password on an instance that was set up without one. */
+  requirePassword: (password: string, label?: string) =>
+    post<{ password: boolean; recovery_code: string }>("/api/auth/require-password", {
+      password,
+      label,
+    }),
 
   login: (password: string, label?: string) =>
     post<{ authenticated: boolean; days: number }>("/api/auth/login", { password, label }),

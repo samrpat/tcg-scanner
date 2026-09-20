@@ -189,6 +189,65 @@ async def _stats() -> dict:
         }
 
 
+async def _scrub_metadata(args) -> dict:
+    """Clean originals that were stored before uploads were scrubbed on the way in.
+
+    New captures need none of this — `attach_image` scrubs everything it writes. This is for a
+    collection that already exists, where an upload from a camera roll may be sitting on disk
+    complete with the coordinates of the room it was taken in.
+
+    Lossless, so it is safe to run over a whole collection: the metadata segments come out and
+    the compressed picture is copied through untouched.
+    """
+    from sqlalchemy import select
+
+    from app.enums import ImageKind
+    from app.models import Image as ImageRow
+    from app.services.scrub import scrub_jpeg
+    from app.storage import get_storage
+
+    storage = get_storage()
+    originals = (ImageKind.ORIGINAL_FRONT, ImageKind.ORIGINAL_BACK)
+
+    cleaned, untouched, failed = [], 0, []
+    async with new_session() as session:
+        rows = (
+            (await session.execute(select(ImageRow).where(ImageRow.kind.in_(originals))))
+            .scalars()
+            .all()
+        )
+        for row in rows:
+            try:
+                payload = storage.get(row.path)
+            except Exception:  # noqa: BLE001 - a missing file is not this command's problem
+                failed.append(row.path)
+                continue
+
+            scrubbed, removed = scrub_jpeg(payload)
+            if not removed or scrubbed == payload:
+                untouched += 1
+                continue
+
+            cleaned.append({"path": row.path, "removed": removed,
+                            "bytes_saved": len(payload) - len(scrubbed)})
+            if not args.dry_run:
+                stored = storage.put(row.path, scrubbed, overwrite=True)
+                # The hash is what image URLs are versioned on, so it has to follow.
+                row.sha256 = stored.sha256
+                row.bytes = stored.bytes
+        if not args.dry_run:
+            await session.commit()
+
+    return {
+        "examined": len(rows),
+        "cleaned": len(cleaned),
+        "already_clean": untouched,
+        "unreadable": failed,
+        "dry_run": bool(args.dry_run),
+        "examples": cleaned[:5],
+    }
+
+
 async def _set_password(args) -> dict:
     """Set the password from the command line.
 
@@ -327,6 +386,16 @@ def main() -> int:
         help="Run detection over every stored original and report how it did.",
     )
 
+    p_scrub = sub.add_parser(
+        "scrub-metadata",
+        help="Strip location and device metadata from originals already stored.",
+    )
+    p_scrub.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be removed without writing anything.",
+    )
+
     p_password = sub.add_parser(
         "set-password",
         help="Set the login password. The way back in when it has been forgotten.",
@@ -367,6 +436,8 @@ def main() -> int:
                 return await _benchmark()
             if args.command == "set-password":
                 return await _set_password(args)
+            if args.command == "scrub-metadata":
+                return await _scrub_metadata(args)
             return await _stats()
         finally:
             await dispose_engine()

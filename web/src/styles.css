@@ -1612,3 +1612,27 @@ td .linklike + .linklike { margin-left: 0.6rem; }
   color: var(--muted);
   max-width: 78ch;
 }
+
+.gate-sub { margin: 0; font-size: 1.05rem; }
+/* A second, quieter action. The recommended one is the filled button above it. */
+.gate-alt {
+  min-height: 42px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+/* Meant to be read off a screen and typed, or photographed. Big, spaced, unambiguous. */
+.recovery-code {
+  margin: 0;
+  padding: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: clamp(0.95rem, 4vw, 1.2rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.gate-foot .linklike { font-size: inherit; }

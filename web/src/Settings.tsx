@@ -27,6 +27,8 @@ export default function Settings({
 
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
+  // Readable exactly once, right after it is generated. Never fetched.
+  const [recovery, setRecovery] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -101,7 +103,9 @@ export default function Settings({
                     {config.authentication === "on" ? (
                       "required"
                     ) : (
-                      <strong className="danger-text">OFF — anyone on this network can open it</strong>
+                      <strong className="danger-text">
+                        OFF — anyone on this network can open it
+                      </strong>
                     )}
                     <span className="muted"> · {config.authentication_source}</span>
                   </td>
@@ -148,6 +152,37 @@ export default function Settings({
           <button className="linklike" onClick={onShowIntro}>
             show the introduction again
           </button>
+        </section>
+
+        <section>
+          <h3>Recovery code</h3>
+          {recovery ? (
+            <>
+              <pre className="recovery-code">{recovery}</pre>
+              <p className="muted">
+                Write it down now — it will not be shown again, and it replaces any code you
+                had before.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="muted">
+                The only way back in if the password is forgotten. Generating a new one
+                invalidates the old.
+              </p>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  act(async () => {
+                    const r = await api.regenerateRecovery();
+                    setRecovery(r.recovery_code);
+                  })
+                }
+              >
+                Show me a new recovery code
+              </button>
+            </>
+          )}
         </section>
 
         <section>

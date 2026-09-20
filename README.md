@@ -42,6 +42,10 @@ instance is unclaimed and serves nothing but that screen. That is everything the
 Deploying it somewhere it will be left running: `docs/DEPLOY.md`.
 Publishing it as a Docker image for other people: `docs/DISTRIBUTION.md`.
 
+**Privacy and security:** `docs/PRIVACY.md` and `docs/SECURITY.md`. Both are written to be
+checked rather than believed — in scanner mode this talks to nothing, and the command to verify
+that is in the first one.
+
 For full mode, `make full` instead, and then the reference data it identifies and prices
 against:
 

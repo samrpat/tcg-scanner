@@ -235,7 +235,10 @@ export default function App() {
 
   // The dashboard is the only reader of these, so they run only while it is on screen. In
   // scanner mode it is never on screen and the conditioning route is not even mounted.
-  const dash = view === "dashboard";
+  // `!locked` matters as much as `dash` here. "dashboard" is the initial view, so behind the
+  // login screen all three of these fired anyway — and every 401 they earned asked the gate to
+  // re-check the session, which turned one burst into nine status calls.
+  const dash = view === "dashboard" && !locked;
   const { data: stats, refresh: refreshStats } = usePoll(api.stats, 15_000, dash);
   const { data: jobs, refresh: refreshJobs } = usePoll(api.jobs, 4_000, dash);
   const { data: rubric } = usePoll(api.rubric, 120_000, dash && !scanner);

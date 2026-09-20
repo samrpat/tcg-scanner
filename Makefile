@@ -11,7 +11,7 @@ COMPOSE := docker compose
 endif
 COMPOSE_FULL := docker compose -f docker-compose.yml -f docker-compose.full.yml
 
-.PHONY: help on off up full down restart logs ps status migrate revision sync prices seed bake-reference set-password sign-out-all test lint shell psql health hw backup clean
+.PHONY: help on off up full down restart logs ps status migrate revision sync prices seed bake-reference scrub-metadata set-password sign-out-all test lint shell psql health hw backup clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -91,6 +91,10 @@ revision: ## Create a migration: make revision m="add thing"
 	$(COMPOSE) run --rm \
 		-v "$(CURDIR)/api/alembic/versions:/srv/alembic/versions" \
 		api alembic revision --autogenerate -m "$(m)"
+
+scrub-metadata: ## Strip location/device data from originals already stored
+	@# New captures are scrubbed on the way in. This is for a collection that predates that.
+	$(COMPOSE) run --rm api python -m app.cli scrub-metadata $(ARGS)
 
 set-password: ## Set the login password (the way back in when it is forgotten)
 	@# Interactive, so the password is never in the shell history or the process list.

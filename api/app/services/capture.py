@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.enums import CaptureSource, ImageKind, InventoryStatus
 from app.logging_setup import get_logger
 from app.models import Image, InventoryItem
+from app.services.scrub import scrub
 from app.services.sku import next_sku
 from app.storage import get_storage, image_path
 
@@ -168,6 +169,12 @@ async def attach_image(
         raise CaptureError(
             f"{item.sku} already has a {kind.value} image; pass replace=true to overwrite it"
         )
+
+    # Metadata comes off before anything is written. A capture taken through the app's own
+    # camera has none — a canvas carries nothing — but an *upload* is the file as the phone
+    # wrote it, and this is the copy the batch export offers under `kind=all` and the public
+    # photo host serves by URL. Lossless: the segments come out, the pixels do not change.
+    payload = scrub(payload)
 
     storage = get_storage()
     path = image_path(item.sku, kind)

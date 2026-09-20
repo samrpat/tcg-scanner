@@ -52,6 +52,12 @@ MIN_PASSWORD_LENGTH = 10
 
 TOKEN_BYTES = 32
 
+# A recovery code. Five groups of five from an alphabet with no 0/O/1/I/L, because this gets
+# written on paper and read back by somebody who is already having a bad day.
+RECOVERY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+RECOVERY_GROUPS = 5
+RECOVERY_GROUP_LEN = 5
+
 
 class AuthError(Exception):
     """Something the caller can fix, surfaced as a 4xx."""
@@ -219,3 +225,61 @@ def is_claimed(user: User | None) -> bool:
     """Whether this instance has had a password set. An unclaimed instance serves only the auth
     routes — not everything, which is what "no password yet" used to mean."""
     return bool(user and user.password_hash)
+
+
+# ── recovery ───────────────────────────────────────────────────────────────────────────────
+
+
+def new_recovery_code() -> str:
+    """A fresh code, in the form `ABCDE-FGHJK-...`.
+
+    About 124 bits from a 31-character alphabet — far beyond guessing, and the login rate
+    limit applies to recovery attempts as well.
+    """
+    groups = [
+        "".join(secrets.choice(RECOVERY_ALPHABET) for _ in range(RECOVERY_GROUP_LEN))
+        for _ in range(RECOVERY_GROUPS)
+    ]
+    return "-".join(groups)
+
+
+def normalise_recovery(code: str) -> str:
+    """Accept what somebody actually types: any case, spaces or dashes, either way."""
+    return "".join(ch for ch in code.upper() if ch.isalnum())
+
+
+def hash_recovery(code: str) -> str:
+    """Hashed like a password, through the same KDF.
+
+    Not a plain sha256, even though the code is high-entropy and does not need stretching. A
+    stolen database should yield the same answer for every credential in it — "nothing usable"
+    — and the way to guarantee that is to have one way of storing a secret, not two.
+    """
+    normalised = normalise_recovery(code)
+    salt = secrets.token_bytes(SALT_BYTES)
+    key = hashlib.scrypt(
+        normalised.encode("utf-8"),
+        salt=salt,
+        n=SCRYPT_N,
+        r=SCRYPT_R,
+        p=SCRYPT_P,
+        dklen=KEY_BYTES,
+        maxmem=SCRYPT_N * SCRYPT_R * 256,
+    )
+    salt_b64 = base64.b64encode(salt).decode()
+    key_b64 = base64.b64encode(key).decode()
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt_b64}${key_b64}"
+
+
+def verify_recovery(code: str, encoded: str | None) -> bool:
+    return verify_password(normalise_recovery(code), encoded)
+
+
+async def issue_recovery_code(session: AsyncSession, user: User) -> str:
+    """Generate, store the hash, return the code. The only time it is ever readable."""
+    code = new_recovery_code()
+    user.recovery_hash = hash_recovery(code)
+    user.recovery_set_at = datetime.now(UTC)
+    await session.flush()
+    log.info("auth.recovery_issued", user=str(user.id))
+    return code

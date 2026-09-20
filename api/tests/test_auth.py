@@ -224,3 +224,72 @@ def test_configuration_is_reported_with_where_it_is_set():
     assert "mode_source" in source
     assert "authentication_source" in source
     assert ".env" in source
+
+
+# ── the choice, and the way back ───────────────────────────────────────────────────────────
+
+
+def test_no_password_is_a_stored_decision_not_an_empty_field():
+    """"Nobody has set this up yet" and "the operator decided against a password" look the
+    same from outside and must not behave the same. The first serves nothing; the second
+    serves everything. A column records which."""
+    import inspect
+
+    from app.authz import instance_is_open
+    from app.routers.auth import claim
+
+    assert "auth_disabled = True" in inspect.getsource(claim)
+    # And an unclaimed instance is never read as an open one.
+    source = inspect.getsource(instance_is_open)
+    assert "user.auth_disabled" in source
+    assert "return False" in source  # a database that cannot answer is not a yes
+
+
+def test_the_recovery_code_is_hashed_like_a_password():
+    """A stolen database should give the same answer for every credential in it — nothing
+    usable — and the way to guarantee that is one way of storing a secret, not two."""
+    code = auth_service.new_recovery_code()
+    stored = auth_service.hash_recovery(code)
+    assert stored.startswith("scrypt$")
+    assert code not in stored
+    assert auth_service.verify_recovery(code, stored)
+
+
+def test_a_recovery_code_survives_being_typed_by_a_human():
+    """It gets written on paper and read back by somebody already having a bad day."""
+    code = auth_service.new_recovery_code()
+    stored = auth_service.hash_recovery(code)
+    for typed in (code.lower(), code.replace("-", " "), code.replace("-", ""),
+                  f"  {code.lower().replace('-', ' ')}  "):
+        assert auth_service.verify_recovery(typed, stored), typed
+    assert not auth_service.verify_recovery("AAAAA-BBBBB-CCCCC-DDDDD-EEEEE", stored)
+
+
+def test_recovery_codes_avoid_the_ambiguous_characters():
+    """0/O and 1/I/L are the reason a written-down code fails to work."""
+    for _ in range(20):
+        assert not (set(auth_service.new_recovery_code()) & set("01OIL"))
+
+
+def test_recovery_is_rate_limited_and_single_use():
+    """A code is the password's equal, so guessing at one must cost the same as guessing at
+    the other — and a used code is spent."""
+    import inspect
+
+    from app.routers.auth import recover
+
+    source = inspect.getsource(recover)
+    assert "_too_many" in source
+    assert "issue_recovery_code" in source  # a replacement is issued, so the old one is dead
+    assert "revoke_all" in source  # recovery means access was lost; sign everything out
+
+
+def test_turning_the_password_on_later_closes_the_instance():
+    import inspect
+
+    from app.routers.auth import require_password
+
+    source = inspect.getsource(require_password)
+    assert "auth_disabled = False" in source
+    assert "issue_recovery_code" in source
+    assert "forget_all" in source  # the cached "this instance is open" must not linger

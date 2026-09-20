@@ -37,6 +37,20 @@ class PasswordIn(BaseModel):
     label: str | None = None
 
 
+class ClaimIn(BaseModel):
+    """First run. Either a password, or a deliberate decision not to have one."""
+
+    # Absent means "no password on this instance" — a choice, not an oversight, and the
+    # difference matters: an unclaimed instance serves nothing, an open one serves everything.
+    password: str | None = None
+    label: str | None = None
+
+
+class RecoverIn(BaseModel):
+    code: str
+    new_password: str
+
+
 class ChangeIn(BaseModel):
     current: str
     new: str
@@ -132,48 +146,73 @@ async def status(
 ) -> dict:
     """What the UI needs to decide which screen to show. Always answers, never 401s."""
     user = await _the_user(session)
+    open_instance = bool(user and user.auth_disabled)
     return {
-        "required": settings.auth_required,
-        "claimed": auth_service.is_claimed(user),
+        # Whether a password is being asked for at all: the environment can switch the whole
+        # mechanism off, and the operator can have chosen not to have one.
+        "required": settings.auth_required and not open_instance,
+        "claimed": auth_service.is_claimed(user) or open_instance,
         "authenticated": getattr(request.state, "user_id", None) is not None,
+        "has_password": auth_service.is_claimed(user),
+        "open_by_choice": open_instance,
+        "has_recovery_code": bool(user and user.recovery_hash),
         "min_password_length": auth_service.MIN_PASSWORD_LENGTH,
     }
 
 
 @router.post("/claim")
 async def claim(
-    body: PasswordIn,
+    body: ClaimIn,
     request: Request,
     response: Response,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Set the first password, on an instance that has never had one, and log in.
+    """Finish first-run setup: either set a password, or decide there will not be one.
 
-    Refuses once a password exists — otherwise it would be a way to take over an instance
+    Refuses once the instance is claimed — otherwise it would be a way to take one over
     without knowing the current password, which is the opposite of the point.
+
+    Setting a password also issues a **recovery code**, returned exactly once. There is no
+    email here and no second factor, so it is the only way back in that does not require shell
+    access to the machine.
     """
     user = await _the_user(session)
     if user is None:
         raise HTTPException(status_code=503, detail="no user seeded; run `make seed`")
-    if auth_service.is_claimed(user):
+    if auth_service.is_claimed(user) or user.auth_disabled:
         raise HTTPException(
             status_code=409,
-            detail="this instance already has a password — log in, or reset it with "
+            detail="this instance is already set up — log in, or reset the password with "
             "`make set-password`",
         )
+
+    if body.password is None:
+        # No password. Recorded rather than merely absent, so the gate can tell a considered
+        # decision from an installation nobody has finished.
+        user.auth_disabled = True
+        await session.commit()
+        authz.forget_all()
+        log.warning(
+            "auth.claimed_without_password",
+            detail="this instance is now readable and writable by anything that can reach it",
+        )
+        return {"claimed": True, "password": False}
 
     try:
         await auth_service.set_password(session, user, body.password)
     except auth_service.AuthError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    recovery = await auth_service.issue_recovery_code(session, user)
     token = await auth_service.issue_session(
         session, user, days=settings.auth_session_days, label=body.label
     )
     await session.commit()
+    authz.forget_all()
     _set_cookie(response, request, token)
     log.info("auth.claimed")
-    return {"claimed": True}
+    # The one and only time this is readable.
+    return {"claimed": True, "password": True, "recovery_code": recovery}
 
 
 @router.post("/login")
@@ -323,3 +362,108 @@ async def purge(
     removed = await auth_service.purge_expired(session)
     await session.commit()
     return {"removed": removed, "at": datetime.now(UTC).isoformat()}
+
+
+@router.post("/recover")
+async def recover(
+    body: RecoverIn,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Set a new password using the recovery code, and sign every device out.
+
+    Rate limited on the same counter as login: a code is the password's equal, so guessing at
+    one must cost the same as guessing at the other.
+
+    Signing everything out is not optional. Recovery is used when access has been lost, and
+    "lost" sometimes means somebody else has it.
+    """
+    user = await _the_user(session)
+    if user is None or not user.recovery_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="no recovery code was set on this instance — reset the password on the "
+            "machine itself with `make set-password`",
+        )
+
+    if await _too_many(request):
+        raise HTTPException(
+            status_code=429,
+            detail=f"too many attempts — wait {settings.auth_lockout_seconds // 60} minutes",
+        )
+
+    if not auth_service.verify_recovery(body.code, user.recovery_hash):
+        await _record_failure(request)
+        log.warning("auth.recovery_failed", client=_client(request))
+        raise HTTPException(status_code=401, detail="that code is not right")
+
+    try:
+        await auth_service.set_password(session, user, body.new_password)
+    except auth_service.AuthError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    # A used code is spent. A new one is issued in its place, so recovery stays possible.
+    fresh = await auth_service.issue_recovery_code(session, user)
+    user.auth_disabled = False
+    await auth_service.revoke_all(session, user)
+    await session.commit()
+    authz.forget_all()
+    await _clear_failures(request)
+
+    token = await auth_service.issue_session(
+        session, user, days=settings.auth_session_days, label="recovered"
+    )
+    await session.commit()
+    _set_cookie(response, request, token)
+    log.warning("auth.recovered", detail="every device was signed out")
+    return {"recovered": True, "recovery_code": fresh, "devices_signed_out": True}
+
+
+@router.post("/recovery-code")
+async def regenerate_recovery(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Issue a fresh recovery code, invalidating the old one. Shown once."""
+    user = await _the_user(session)
+    if user is None or getattr(request.state, "user_id", None) is None:
+        raise HTTPException(status_code=401, detail="log in first")
+    code = await auth_service.issue_recovery_code(session, user)
+    await session.commit()
+    return {"recovery_code": code}
+
+
+@router.post("/require-password")
+async def require_password(
+    body: PasswordIn,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Put a password on an instance that was set up without one.
+
+    The way back from a decision made at first run, without a redeploy — which is the whole
+    reason that decision lives in the database rather than in the environment.
+    """
+    user = await _the_user(session)
+    if user is None:
+        raise HTTPException(status_code=503, detail="no user seeded")
+    if auth_service.is_claimed(user) and not user.auth_disabled:
+        raise HTTPException(status_code=409, detail="this instance already has a password")
+
+    try:
+        await auth_service.set_password(session, user, body.password)
+    except auth_service.AuthError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    recovery = await auth_service.issue_recovery_code(session, user)
+    user.auth_disabled = False
+    token = await auth_service.issue_session(
+        session, user, days=settings.auth_session_days, label=body.label
+    )
+    await session.commit()
+    authz.forget_all()
+    _set_cookie(response, request, token)
+    log.info("auth.password_required_now")
+    return {"password": True, "recovery_code": recovery}

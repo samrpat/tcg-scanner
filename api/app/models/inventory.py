@@ -47,6 +47,13 @@ class User(Base):
     # claimed, which the API treats as "only the auth routes work" rather than "let everyone in".
     password_hash: Mapped[str | None] = mapped_column(String(255))
     password_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The operator chose, at first run, to run without a password. Named for the unsafe state
+    # so that the column default and the safe answer are the same thing.
+    auth_disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # A one-time code, hashed the same way a password is. The only other thing that can set a
+    # new password on an instance with no email and no second factor.
+    recovery_hash: Mapped[str | None] = mapped_column(String(255))
+    recovery_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created()
     updated_at: Mapped[datetime] = updated()
 

@@ -1,6 +1,6 @@
 # CURRENT
 
-**Last verified:** 2026-09-19, against the running stack.
+**Last verified:** 2026-09-20, against the running stack.
 
 **Two builds off one tree.** `make up` is the scanner — shoot a pile, get clean photographs,
 download the folder, archive, next pile — and is what is running. `make full` is the whole path:
@@ -9,10 +9,10 @@ database, same photographs, same batches; switching is a restart.
 
 | | |
 |---|---|
-| Tests | **437 passing** (`make test`) |
+| Tests | **456 passing** (`make test`) |
 | Endpoint smoke checks | **34 scanner / 62 full** (`make smoke`, mode-aware) |
 | Lint | `ruff check` clean; TypeScript clean |
-| Migrations | **0001 → 0024**, 23 tables |
+| Migrations | **0001 → 0025**, 23 tables |
 | Catalogue | 218 sets, 23,544 cards, 35,495 variants |
 | API routes | **62 scanner / 100 full** |
 | API image | **608 MB scanner / 738 MB full** (tesseract is a build argument) |

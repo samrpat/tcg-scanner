@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-20
+
+### Privacy
+- **Photographs are stripped of their metadata before they are stored.** A file uploaded from
+  a camera roll carried GPS, camera model and timestamp, and both the batch export and the
+  public photo host would have served it. Lossless — the metadata segments come out and the
+  pixels are bit-identical. See D-175.
+- `make scrub-metadata` cleans images stored before this existed. All 94 here have been done.
+- `docs/PRIVACY.md` — what leaves the machine (in scanner mode: nothing, and the command to
+  verify it), what is logged, and what a backup contains.
+
+### Security
+- **A password is now a question at setup, not an environment variable** — with a third state
+  the code takes seriously: unclaimed serves nothing, open-by-choice serves everything and
+  says so in a banner. Reversible from Settings. See D-176.
+- **Recovery codes.** Shown once at setup, ~124 bits, no ambiguous characters, typed back in
+  any case with or without dashes. Single-use, replaced on use, and using one signs every
+  device out.
+- Content-Security-Policy, Permissions-Policy (camera yes, location no), `nosniff`,
+  `X-Frame-Options`, `Referrer-Policy: no-referrer`, and same-origin isolation. No HSTS, on
+  purpose — it would brick a self-signed host. See D-177.
+- `docs/SECURITY.md`, including an explicit list of what is *not* defended.
+
+### Fixed
+- **A 401 feedback loop.** Dashboard polls ran behind the login screen and each 401 asked the
+  gate to re-check, turning one burst into nine. Zero requests on the login screen now.
+- **`index.html` was cacheable**, so a browser could keep serving last month's app after an
+  update, with no way to tell. Now `no-cache`, with fingerprinted assets still `immutable`.
+
 ## 2026-09-19 (later still)
 
 ### Less work when nobody is looking
