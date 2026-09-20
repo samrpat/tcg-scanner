@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-20 (sections, properly)
+
+- **Sections are drawn as panels**, not headings over a continuous stream — bordered, with a
+  header strip, and an accent border on the one new scans land in. They fold away, and stay
+  folded. See D-180.
+- **The current section shows even when empty**, which is the moment just after you create
+  one and exactly when you need to see where the next card is going.
+- **Set the section from the Scan screen.** A pill well away from the shutter opens a sheet:
+  name the next pile and press Enter, or tap an existing one. Takes effect on the next
+  shutter press, with no trip to another tab.
+- Where scans land is now its own fact, separate from the order sections are displayed in —
+  so you can go back to an earlier pile without reordering anything.
+
 ## 2026-09-20 (later)
 
 ### Sections within a batch

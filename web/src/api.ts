@@ -95,6 +95,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export type Pending = {
+  /** The batch new scans join, if one is open. */
+  batch: { id: string; name: string } | null;
+  /** Its sections, in order. */
+  sections: { id: string; name: string }[];
+  /** Which one new scans land in. Null means no section. */
+  active_section: string | null;
   next_side: "front" | "back";
   awaiting_back: string | null;
   items: number;
@@ -354,6 +360,13 @@ export const api = {
   deleteSection: (sessionId: string, id: string) =>
     del<{ deleted: string; cards_kept: number }>(
       `/api/sessions/${sessionId}/sections/${id}`,
+    ),
+
+  /** Send new scans into this section. "none" sends them into no section at all. */
+  activateSection: (sessionId: string, id: string) =>
+    post<{ active: { id: string; name: string } | null }>(
+      `/api/sessions/${sessionId}/sections/${id}/activate`,
+      {},
     ),
 
   /** Move cards into a section, or out of every section with the id "none". */

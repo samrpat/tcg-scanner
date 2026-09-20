@@ -19,7 +19,16 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.db import get_session
 from app.enums import CaptureSource, ImageKind, ReviewCategory, ReviewStatus
-from app.models import Card, CardVariant, Image, InventoryItem, Review, ScanSession, User
+from app.models import (
+    BatchSection,
+    Card,
+    CardVariant,
+    Image,
+    InventoryItem,
+    Review,
+    ScanSession,
+    User,
+)
 from app.services.capture import (
     CaptureError,
     attach_image,
@@ -315,12 +324,41 @@ async def pending(
     # invisible: no error, no review, just a card that quietly never becomes gradeable.
     unprocessed = await find_unprocessed(session, user.id)
 
+    # Where the next card is going, so the scan screen can say so and change it without
+    # leaving. Folded into this call rather than given its own: the scan screen already polls
+    # this every few seconds, and a phone holding a camera open does not need another request.
+    from app.routers.sessions import current_section, open_session
+
+    batch = await open_session(session, user)
+    sections: list[dict] = []
+    active = None
+    if batch is not None:
+        rows = (
+            (
+                await session.execute(
+                    select(BatchSection)
+                    .where(BatchSection.session_id == batch.id)
+                    .order_by(BatchSection.position, BatchSection.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        live = await current_section(session, batch)
+        active = str(live.id) if live else None
+        sections = [{"id": str(r.id), "name": r.name} for r in rows]
+
     return {
         "next_side": "back" if waiting else "front",
         "awaiting_back": waiting.sku if waiting else None,
         "items": total,
         "open_image_reviews": open_reviews,
         "unprocessed": len(unprocessed),
+        "batch": (
+            {"id": str(batch.id), "name": batch.name} if batch is not None else None
+        ),
+        "sections": sections,
+        "active_section": active,
     }
 
 

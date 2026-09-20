@@ -364,3 +364,45 @@ def test_the_two_download_splits_compose():
     assert "by_section" in source
     # Section is the outer folder; the count split nests inside it.
     assert 'path = f"{folders.get(item.section_id' in source
+
+
+def test_where_scans_land_is_separate_from_how_sections_are_ordered():
+    """"The last section" is right when you make one and wrong as soon as you want to go
+    back. Finding three more reverse holos at the bottom of the box should not mean
+    reordering the sections to say so — that expresses something about display order to
+    change something that is not about display order at all."""
+    from app.routers.sessions import current_section
+
+    source = inspect.getsource(current_section)
+    # The pointer wins...
+    assert "batch.active_section_id" in source
+    # ...and the old rule survives as the fallback, for a batch never pointed anywhere.
+    assert "BatchSection.position.desc()" in source
+    assert source.index("active_section_id") < source.index("position.desc()")
+
+
+def test_a_pointer_at_a_deleted_section_becomes_no_section():
+    """Not a dangling id. The column is on the batch and the section can be removed from
+    under it."""
+    from app.models import ScanSession
+
+    fk = next(iter(ScanSession.__table__.c.active_section_id.foreign_keys))
+    assert fk.ondelete == "SET NULL"
+
+
+def test_creating_a_section_points_at_it():
+    """You make a section because you are about to scan into it. Needing a second action to
+    say the obvious thing is how a pile ends up in the previous section."""
+    from app.routers.sessions import create_section
+
+    assert "active_section_id = created.id" in inspect.getsource(create_section)
+
+
+def test_the_scan_screen_learns_its_section_without_another_request():
+    """It already polls `pending` every few seconds. A phone holding a camera open does not
+    need a second poll to find out where its cards are going."""
+    from app.routers.capture import pending
+
+    source = inspect.getsource(pending)
+    assert "active_section" in source
+    assert "sections" in source

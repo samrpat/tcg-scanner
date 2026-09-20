@@ -226,9 +226,14 @@ A batch is an evening's scanning; it is usually not one pile. Sort the cards bef
 them — reverse holos, normals, unknowns, then each of those by condition — and keep that shape
 with **+ section**.
 
-New scans land in the last section, so the loop is: name the pile, scan it, name the next one.
-Click a heading to rename it. **remove section** takes the heading and leaves every card where
-it is.
+New scans land in the current section, so the loop is: name the pile, scan it, name the next
+one. Click a heading to rename it, fold it away with the arrow, and **remove section** takes
+the heading while leaving every card where it is.
+
+**You can do all of this without leaving the Scan screen.** The pill at the top left says
+where cards are going; tap it to name the next pile or switch to an earlier one. It takes
+effect on the very next shutter press — which is the point, because the moment you need it is
+mid-pile with a phone in one hand.
 
 **a folder per section** puts each one in its own folder in the download, and composes with
 the photo-count split:

@@ -323,6 +323,11 @@ class ScanSession(Base):
     # A property of the batch rather than of the browser, so the worker can act on it — a switch
     # that only decided what went into a download never caused a single corner to be made.
     corner_shots: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Which section new scans join. Explicit rather than "the last one", so going back to an
+    # earlier pile does not mean reordering the sections to say so.
+    active_section_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("batch_sections.id", ondelete="SET NULL")
+    )
 
 
 class BatchSection(Base):

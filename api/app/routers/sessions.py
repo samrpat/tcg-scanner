@@ -632,11 +632,20 @@ class SectionMoveIn(BaseModel):
 
 
 async def current_section(session: AsyncSession, batch: ScanSession) -> BatchSection | None:
-    """The section new scans join: the last one in the batch's order.
+    """The section new scans join.
 
-    "Last" rather than "most recently created", so reordering also changes where the next card
-    lands — which is what somebody who just dragged a section to the end would expect.
+    Whichever one the batch points at, and failing that the last in order — which is the right
+    answer for a batch that has never been pointed anywhere, and for the moment just after
+    creating the first section.
+
+    The pointer exists because "the last one" is wrong as soon as you want to go back. Finding
+    three more reverse holos at the bottom of the box should not mean reordering the sections.
     """
+    if batch.active_section_id is not None:
+        active = await session.get(BatchSection, batch.active_section_id)
+        if active is not None and active.session_id == batch.id:
+            return active
+
     return (
         await session.execute(
             select(BatchSection)
@@ -735,10 +744,54 @@ async def create_section(
         session_id=target.id, name=name, position=(highest or 0) + 1
     )
     session.add(created)
+    await session.flush()
+    # You make a section because you are about to scan into it. Anything else would need a
+    # second action to express the obvious one.
+    target.active_section_id = created.id
     await session.commit()
     await session.refresh(created)
     log.info("section.created", session_id=str(target.id), name=created.name)
     return {"id": str(created.id), "name": created.name, "position": created.position}
+
+
+@router.post("/{session_id}/sections/{section_id}/activate")
+async def activate_section(
+    session_id: uuid.UUID,
+    section_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Send new scans into this section. `none` sends them into no section at all.
+
+    Called from the scan screen, mid-pile, with a phone in one hand — so it is one request
+    that takes effect on the very next shutter press, with nothing to confirm.
+    """
+    target = await _batch_or_404(session, session_id, user)
+
+    if section_id == "none":
+        target.active_section_id = None
+        await session.commit()
+        return {"active": None}
+
+    try:
+        wanted = uuid.UUID(section_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="not a section id") from exc
+
+    row = (
+        await session.execute(
+            select(BatchSection).where(
+                BatchSection.id == wanted, BatchSection.session_id == target.id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such section")
+
+    target.active_section_id = row.id
+    await session.commit()
+    log.info("section.activated", session_id=str(target.id), name=row.name)
+    return {"active": {"id": str(row.id), "name": row.name}}
 
 
 @router.patch("/{session_id}/sections/{section_id}")

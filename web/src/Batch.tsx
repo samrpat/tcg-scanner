@@ -60,6 +60,23 @@ export default function Batch() {
     }
   };
   const [plan, setPlan] = useState<Awaited<ReturnType<typeof api.photoGroups>> | null>(null);
+  // Which sections are folded away. Remembered, because a pile you have finished checking
+  // should stay out of the way when you come back to the screen.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("batch-folded") ?? "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("batch-folded", JSON.stringify([...collapsed]));
+    } catch {
+      /* private browsing; folding still works for this session */
+    }
+  }, [collapsed]);
+
   const [sections, setSections] = useState<
     Awaited<ReturnType<typeof api.sections>>["sections"]
   >([]);
@@ -161,8 +178,14 @@ export default function Batch() {
       cards: InventoryRow[];
     }[] = [];
     for (const section of sections) {
-      const held = bySectionId.get(section.id);
-      if (held?.length) out.push({ key: section.id, section, cards: held });
+      const held = bySectionId.get(section.id) ?? [];
+      // Empty sections are dropped — a heading with nothing under it is noise — except the
+      // current one, which has to be visible precisely when it is empty: that is the moment
+      // just after creating it, and the question it answers is "where is the next card
+      // going?". Not shown on an archived batch, where nothing is going anywhere.
+      if (held.length || (section.current && !isArchivedView)) {
+        out.push({ key: section.id, section, cards: held });
+      }
     }
     const loose = bySectionId.get(null);
     if (loose?.length) out.push({ key: "none", section: null, cards: loose });
@@ -398,12 +421,37 @@ export default function Batch() {
         </p>
       ) : null}
 
-      {groups.map((group) => (
-        <section className="batch-section" key={group.key}>
-          {/* The heading only appears once there is more than one group. A batch nobody has
-              divided should not grow a heading saying so. */}
-          {groups.length > 1 ? (
+      {groups.map((group) => {
+        // Sections are only drawn as sections once the batch actually has one. A batch
+        // nobody has divided should not grow a panel around its only group saying so.
+        const divided = sections.length > 0;
+        const isCurrent = Boolean(group.section?.current) && !isArchivedView;
+        const shut = collapsed.has(group.key);
+        return (
+        <section
+          className={
+            divided
+              ? `batch-section panelled${isCurrent ? " current" : ""}${shut ? " shut" : ""}`
+              : "batch-section"
+          }
+          key={group.key}
+        >
+          {divided ? (
             <div className="batch-section-head">
+              <button
+                className="section-fold"
+                title={shut ? "Show these cards" : "Fold this section away"}
+                aria-expanded={!shut}
+                onClick={() =>
+                  setCollapsed((prev) => {
+                    const next = new Set(prev);
+                    if (!next.delete(group.key)) next.add(group.key);
+                    return next;
+                  })
+                }
+              >
+                {shut ? "▸" : "▾"}
+              </button>
               {group.section ? (
                 <SectionName
                   sessionId={shownBatch?.id ?? ""}
@@ -415,12 +463,10 @@ export default function Batch() {
               ) : (
                 <strong className="muted">Not in a section</strong>
               )}
-              <span className="muted">
+              <span className="section-count">
                 {group.cards.length} card{group.cards.length === 1 ? "" : "s"}
               </span>
-              {group.section?.current && !isArchivedView ? (
-                <span className="chip">new scans land here</span>
-              ) : null}
+              {isCurrent ? <span className="chip accent">new scans land here</span> : null}
               <span className="spacer" />
               {group.section && !isArchivedView ? (
                 <SectionDelete
@@ -434,7 +480,13 @@ export default function Batch() {
             </div>
           ) : null}
 
-          <div className="batch-grid">
+          {divided && group.cards.length === 0 && !shut ? (
+            <p className="section-empty muted">
+              Nothing here yet — the next card you scan lands in this section.
+            </p>
+          ) : null}
+
+          <div className="batch-grid" hidden={shut || group.cards.length === 0}>
             {group.cards.map((c) => (
               <div
               className={
@@ -517,7 +569,8 @@ export default function Batch() {
             ))}
           </div>
         </section>
-      ))}
+        );
+      })}
 
       {session && session.sessions.length > 1 ? (
         <section className="batch-archive">

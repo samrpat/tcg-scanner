@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePolling } from "./usePolling";
 import { CAMERA_NEEDS_HTTPS, isSecureEnough, secureUrl } from "./secure";
-import { api, type RecentItem } from "./api";
+import { api, type Pending, type RecentItem } from "./api";
 
 /**
  * Mobile scanning.
@@ -55,6 +55,11 @@ export default function Scan() {
   const [status, setStatus] = useState<string>("");
   const [inFlight, setInFlight] = useState(0);
   const [recent, setRecent] = useState<RecentItem[]>([]);
+  const [pending, setPending] = useState<Pending | null>(null);
+  // The section picker is a sheet rather than a control on the camera. The rule on this
+  // screen is that the only thing easy to press is the shutter, and a dropdown next to it is
+  // a mis-tap that silently sends the next twenty cards to the wrong pile.
+  const [picking, setPicking] = useState(false);
   // Cards completed in this sitting, so the operator can see progress without doing arithmetic
   // against the total inventory.
   const [sessionCards, setSessionCards] = useState(0);
@@ -113,6 +118,7 @@ export default function Scan() {
     try {
       const [pending, items] = await Promise.all([api.pending(), api.recent()]);
       setSide(pending.next_side);
+      setPending(pending);
       setRecent(items.slice(0, 6));
     } catch {
       /* the strip is informational; a failed poll must never interrupt scanning */
@@ -290,6 +296,19 @@ export default function Scan() {
           </span>
         </div>
 
+        {/* Where the next card lands. On screen always, because scanning a pile into the
+            wrong section is the mistake sections exist to prevent, and it is silent. */}
+        <div className="scan-section">
+          <button className="scan-section-pick" onClick={() => setPicking(true)}>
+            <span className="muted">into</span>{" "}
+            <strong>
+              {pending?.sections.find((x) => x.id === pending?.active_section)?.name ??
+                (pending?.sections.length ? "no section" : "this batch")}
+            </strong>
+            <span className="muted"> ▾</span>
+          </button>
+        </div>
+
         {last ? (
           <div className="scan-last">
             <SidePreview label="F" src={thumb(last.listing_front ?? last.processed_front_url)} />
@@ -308,6 +327,20 @@ export default function Scan() {
               <span className="muted">{last.sku}</span>
             </div>
           </div>
+        ) : null}
+
+        {picking && pending?.batch ? (
+          <SectionPicker
+            batchId={pending.batch.id}
+            batchName={pending.batch.name}
+            sections={pending.sections}
+            active={pending.active_section}
+            onClose={() => setPicking(false)}
+            onChanged={() => {
+              setPicking(false);
+              refresh();
+            }}
+          />
         ) : null}
 
         {needsGesture ? (
@@ -353,6 +386,118 @@ export default function Scan() {
           {inFlight > 0 ? <span>{inFlight} uploading</span> : <span>&nbsp;</span>}
           {lastSku ? <span className="muted">{lastSku}</span> : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * Choosing where the next cards go, without leaving the camera.
+ *
+ * The moment this serves: a pile is finished, the next one is in the other hand, and the
+ * operator needs to say "these are the lightly played ones now" and carry straight on. Going
+ * to another tab to do that is how a pile ends up in the wrong section — not because anybody
+ * forgets, but because the interruption is expensive enough to skip.
+ *
+ * So: one tap to open, one to switch, or a name and Enter for a new one. It takes effect on
+ * the very next shutter press.
+ */
+function SectionPicker({
+  batchId,
+  batchName,
+  sections,
+  active,
+  onClose,
+  onChanged,
+}: {
+  batchId: string;
+  batchName: string;
+  sections: { id: string; name: string }[];
+  active: string | null;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="scan-sheet" onClick={onClose}>
+      <div className="scan-sheet-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2>Scanning into</h2>
+          <button className="linklike" onClick={onClose}>
+            close
+          </button>
+        </div>
+        <p className="muted">{batchName}</p>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!name.trim() || busy) return;
+            run(() => api.createSection(batchId, name.trim()));
+          }}
+        >
+          <div className="scan-sheet-new">
+            <input
+              autoFocus
+              placeholder="Next pile — e.g. Reverse holo · LP"
+              value={name}
+              disabled={busy}
+              maxLength={120}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button type="submit" disabled={busy || !name.trim()}>
+              Start it
+            </button>
+          </div>
+        </form>
+
+        {sections.length ? (
+          <ul className="scan-sheet-list">
+            {sections.map((s) => (
+              <li key={s.id}>
+                <button
+                  className={s.id === active ? "on" : ""}
+                  disabled={busy}
+                  onClick={() => run(() => api.activateSection(batchId, s.id))}
+                >
+                  {s.name}
+                  {s.id === active ? <span className="muted"> · current</span> : null}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                className={active === null ? "on" : ""}
+                disabled={busy}
+                onClick={() => run(() => api.activateSection(batchId, "none"))}
+              >
+                No section
+              </button>
+            </li>
+          </ul>
+        ) : (
+          <p className="muted">
+            No sections yet. Name one above and the next card goes into it.
+          </p>
+        )}
+
+        {error ? <p className="error">{error}</p> : null}
       </div>
     </div>
   );

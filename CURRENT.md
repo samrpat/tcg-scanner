@@ -9,10 +9,10 @@ database, same photographs, same batches; switching is a restart.
 
 | | |
 |---|---|
-| Tests | **462 passing** (`make test`) |
+| Tests | **466 passing** (`make test`) |
 | Endpoint smoke checks | **41 scanner / 69 full** (`make smoke`, mode-aware) |
 | Lint | `ruff check` clean; TypeScript clean |
-| Migrations | **0001 → 0026**, 24 tables |
+| Migrations | **0001 → 0027**, 24 tables |
 | Catalogue | 218 sets, 23,544 cards, 35,495 variants |
 | API routes | **62 scanner / 100 full** |
 | API image | **608 MB scanner / 738 MB full** (tesseract is a build argument) |
