@@ -1,0 +1,86 @@
+# ── The full app ───────────────────────────────────────────────────────────────────────────
+#
+# Layered over docker-compose.yml, never used alone:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.full.yml up -d
+#
+# or just `make full`, which is the same thing.
+#
+# This turns the scanner back into the whole tool: card identification against TCGdex,
+# condition assessment, TCGplayer and real eBay sold pricing, catalogue-accurate titles and
+# item specifics, and eBay upload files with photographs attached. Same database, same
+# photographs, same batches — the difference is which code is switched on, not which data
+# exists.
+#
+# The api and worker run a *different image* here (`:full`, built with tesseract) so that
+# switching modes does not rebuild the other one. Both are built by `docker compose build api`
+# under the mode you are in.
+
+x-full-api: &full-api
+  image: tcg-scanner-api:full
+  environment:
+    PYTHONUNBUFFERED: "1"
+    # Puts the listing routes back on the API and the listing tabs back in the UI.
+    SCANNER_MODE: "false"
+
+services:
+  api:
+    <<: *full-api
+    build:
+      context: ./api
+      args:
+        # The collector-number reader. Identification uses it; the scanner build does not
+        # install it at all.
+        WITH_OCR: "1"
+
+  worker:
+    <<: *full-api
+
+  # A read-only window onto the card photographs, for eBay bulk uploads only.
+  #
+  # eBay fetches listing pictures from URLs, so a bulk file can only carry photos if this host
+  # is reachable from the internet. This app has NO AUTHENTICATION, so exposing it wholesale
+  # would hand the collection to anyone who found the address. This serves the JPEGs and
+  # nothing else — no API, no writes, no directory listings.
+  #
+  # Off by default. Start it only while an upload is in flight:
+  #   make photos-on     then     make photos-off
+  photos:
+    image: nginx:1.27-alpine
+    profiles: ["photos"]
+    ports:
+      - "${PHOTOS_PORT:-8081}:80"
+    volumes:
+      - ./photos/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Read-only: this container can never modify a stored photograph.
+      - ./data/images:/data/images:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  # The public address eBay fetches photographs from.
+  #
+  # A Cloudflare quick tunnel: no account, no port forwarding, no DNS. It points at the photos
+  # server above and nothing else, so what is exposed is card JPEGs — which are about to be
+  # public on a listing anyway — and not the unauthenticated API.
+  #
+  # The address changes every restart, which is why the app reads it from the tunnel's own
+  # metrics endpoint rather than asking anyone to copy it.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["photos"]
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://photos:80
+    depends_on:
+      photos: {condition: service_started}
+    restart: unless-stopped
+
+  # Optional local TCGdex mirror (D-010). Enable with: make full ARGS="--profile tcgdex"
+  # Then set TCGDEX_BASE_URL=http://tcgdex:3000/v2 in .env.
+  # Note: the self-hosted image serves card data only; pricing comes from the hosted API.
+  tcgdex:
+    image: tcgdex/server:latest
+    profiles: ["tcgdex"]
+    restart: unless-stopped

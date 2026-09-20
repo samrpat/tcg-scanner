@@ -1,0 +1,165 @@
+name: tcg
+
+# ── The scanner ────────────────────────────────────────────────────────────────────────────
+#
+# This file runs the app as a scanner and nothing else: shoot a pile, crop and rectify every
+# card to 88x63 mm, cut the corner close-ups, download the folder, archive, next pile. The
+# listing half — identification, grading, pricing, eBay titles and upload files, the public
+# photo host — is switched off, and its routes are not even mounted (see api/app/main.py).
+#
+# It is not gone. `make full` layers docker-compose.full.yml over this file and brings all of
+# it back, against the same database and the same photographs. A frozen copy of the tree as it
+# stood before the split is in archive/ if something ever needs comparing against it.
+#
+# Five containers, which is the floor: Postgres holds the batches, Redis carries the work,
+# the worker does the image processing, the API serves it, nginx serves the UI.
+
+# Applied to every container here.
+#
+# `max-size` is the one that matters most. Docker's default json-file driver grows without
+# limit, and this runs on a Pi whose disk is an SD card with the database on it — months of
+# structured request logs will eventually take out the thing they were recording.
+#
+# `no-new-privileges` stops a process inside a container gaining capabilities through setuid
+# binaries. Nothing here needs to, so nothing here may.
+x-hardening: &hardening
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  security_opt:
+    - no-new-privileges:true
+
+x-api-base: &api-base
+  <<: *hardening
+  # No build here on purpose: api and worker must share ONE image. Giving each its own
+  # build stanza makes Compose produce two images, and `docker compose build api` then
+  # silently leaves the worker running stale code.
+  image: tcg-scanner-api:local
+  env_file: [.env]
+  environment:
+    PYTHONUNBUFFERED: "1"
+    # The scanner build. docker-compose.full.yml overrides this, and overriding it here in
+    # .env works too — the app reads it at startup either way.
+    SCANNER_MODE: "${SCANNER_MODE:-true}"
+  volumes:
+    # Card art never changes, so it is cached to disk and must survive a container rebuild.
+    # Without this the Pi re-downloads its whole working set on every deploy. Unused while
+    # scanning — nothing is identified — and kept mounted so switching modes needs no edit.
+    - ./data/images:/data/images
+    - ./data/art-cache:/data/art-cache
+    # Derived previews. Losing them costs one resize, never any data.
+    - ./data/thumbnails:/data/thumbnails
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:16-alpine
+    # Room for the working set and its cache, and a ceiling so a runaway query cannot take the
+    # whole Pi down with it. The catalogue is ~35k variants; this is generous for that.
+    mem_limit: 1g
+    env_file: [.env]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tcg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tcg}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tcg} -d ${POSTGRES_DB:-tcg}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    # Deliberately not published to the host (spec §42).
+
+  redis:
+    <<: *hardening
+    image: redis:7.4-alpine
+    mem_limit: 320m
+    # `noeviction` on purpose. This holds the job queue, and the alternative policies drop keys
+    # to make room — which here means a scanned card whose processing job silently vanishes.
+    # Refusing the write is loud and recoverable; losing the job is neither. The ceiling is far
+    # above anything a queue of a few thousand jobs needs, so it should never be reached.
+    command:
+      - "redis-server"
+      - "--save"
+      - "60"
+      - "1"
+      - "--appendonly"
+      - "no"
+      - "--maxmemory"
+      - "256mb"
+      - "--maxmemory-policy"
+      - "noeviction"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # The only service that builds the shared image.
+  api:
+    <<: *api-base
+    build:
+      context: ./api
+      args:
+        # Tesseract only ever reads a collector number, which is identification. A scanner
+        # never calls it, so it is left out — ~90 MB of image and a slow apt step per rebuild,
+        # which on a Pi is the difference between a two-minute deploy and a ten-minute one.
+        WITH_OCR: "0"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Same image as api, different command. Rebuild it with `docker compose build api`.
+  worker:
+    <<: *api-base
+    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    # The heaviest container: OpenCV decoding a 48 MP capture and rectifying it holds the whole
+    # image in memory more than once. Two concurrent jobs is the default, hence the headroom.
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis,os; redis.Redis(host=os.environ['REDIS_HOST']).ping()"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  web:
+    <<: *hardening
+    mem_limit: 128m
+    build:
+      context: ./web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+      # HTTPS, needed for the camera on anything that is not localhost. Serves only when a
+      # certificate exists; see `make cert`.
+      - "${WEB_TLS_PORT:-8443}:443"
+    volumes:
+      - ./data/certs:/etc/nginx/certs:ro
+    depends_on:
+      api: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

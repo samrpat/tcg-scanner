@@ -1,0 +1,1214 @@
+:root {
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --border: #e3e3e7;
+  --text: #17171a;
+  --muted: #6b6b76;
+  --accent: #2f6df6;
+  --ok: #1a7f4b;
+  --warn: #b8860b;
+  --bad: #c0392b;
+  --radius: 10px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131316;
+    --panel: #1b1b1f;
+    --border: #2c2c33;
+    --text: #ececf1;
+    --muted: #9a9aa6;
+    --accent: #6f9bff;
+    --ok: #4cc38a;
+    --warn: #e0b341;
+    --bad: #f16a5b;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Use the screen. The app is a workbench, not an article: a 1000px column on a desktop left
+   two thirds of the display empty while card images — the thing actually being judged — were
+   rendered at thumbnail size. Capped only where a line of prose would otherwise become
+   unreadably long. */
+.wrap { max-width: 2200px; margin: 0 auto; padding: 28px 32px 64px; }
+/* Nothing may make the page scroll sideways. Wide content wraps or shrinks; if something must
+   be wider than the viewport it gets its own scroller, never the body. */
+html, body { max-width: 100%; overflow-x: hidden; }
+.wrap, .card, .grid, .strip, .review-list, .approve, .approve-body { min-width: 0; }
+img { max-width: 100%; }
+@media (max-width: 900px) { .wrap { padding: 20px 14px 48px; } }
+
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+.phase { color: var(--muted); font-size: 13px; }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-top: 24px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+
+.metric { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.metric small { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.row:last-child { border-bottom: 0; }
+.row span:first-child { color: var(--muted); white-space: nowrap; }
+.row span:last-child { text-align: right; }
+
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+
+button {
+  font: inherit;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+.actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 8px 0; }
+td { padding: 6px 8px 6px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+
+.tag { font-size: 11px; padding: 2px 7px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted); }
+.tag.running { color: var(--warn); border-color: var(--warn); }
+.tag.complete { color: var(--ok); border-color: var(--ok); }
+.tag.failed { color: var(--bad); border-color: var(--bad); }
+
+.note { max-width: 78ch; color: var(--muted); font-size: 13px; margin-top: 28px; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+
+/* --- Tabs --- */
+.tabs { display: flex; gap: 4px; }
+.tabs button { padding: 5px 12px; font-size: 13px; }
+.tabs button.active { border-color: var(--accent); color: var(--accent); }
+
+/* --- Capture --- */
+.capture-grid { grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); }
+@media (max-width: 760px) { .capture-grid { grid-template-columns: 1fr; } }
+
+.video-wrap {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.video-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Card-shaped framing guide at the real 63:88 ratio, so the operator fills the frame
+   the way the resolution check needs. */
+.card-guide {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  height: 84%;
+  aspect-ratio: 63 / 88;
+  border: 2px dashed rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.camera-fallback {
+  padding: 28px 16px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.side-prompt {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 15px;
+  border: 1px solid var(--border);
+}
+.side-prompt.front { border-color: var(--accent); color: var(--accent); }
+.side-prompt.back { border-color: var(--warn); color: var(--warn); }
+
+.shutter { font-weight: 600; }
+kbd {
+  font: 11px ui-monospace, Menlo, monospace;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.status { margin-top: 12px; font-size: 13px; min-height: 20px; color: var(--muted); }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--bad); }
+.status.busy { color: var(--warn); }
+
+/* Wraps rather than scrolling sideways. A horizontal strip hides whatever does not fit, and
+   the operator has no reason to expect anything is off to the right — so cards silently went
+   unseen. The screen is wide; use it downward instead. */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+  padding-bottom: 6px;
+}
+.thumb { min-width: 0; }
+.thumb img,
+.thumb-placeholder {
+  width: 100%;
+  aspect-ratio: 63 / 88;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg);
+  text-align: center;
+}
+.thumb-meta { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+.thumb-sides { display: flex; gap: 6px; align-items: center; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.thumb-sides span { border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+.thumb-sides span.on { border-color: var(--ok); color: var(--ok); }
+.thumb-sides span.half { border-color: var(--warn); color: var(--warn); }
+.thumb-sides em { font-style: normal; margin-left: auto; }
+.thumb-error { margin-top: 4px; font-size: 11px; color: var(--bad); overflow-wrap: anywhere; }
+
+.tag.ok { color: var(--ok); border-color: var(--ok); }
+.tag.review { color: var(--warn); border-color: var(--warn); }
+.tag.reject { color: var(--bad); border-color: var(--bad); }
+
+/* --- Capture, real cameras --- */
+/* The preview shows the whole frame, never a crop: the guide has to mean something. */
+.video-wrap { aspect-ratio: 4 / 3; max-height: 62vh; margin: 0 auto; }
+.video-wrap video { object-fit: contain; background: #000; }
+
+.capture-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.capture-meta em { font-style: normal; }
+.capture-meta em.ok { color: var(--ok); }
+.capture-meta em.warn { color: var(--warn); }
+.capture-meta em.bad { color: var(--bad); }
+.capture-meta select { font: inherit; padding: 3px 6px; border-radius: 6px; background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+
+.upload-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.filebtn {
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--muted);
+}
+.filebtn:hover { border-color: var(--accent); color: var(--accent); }
+.filebtn.primary { color: var(--text); }
+.filebtn input { display: none; }
+
+.thumb-placeholder.failed { color: var(--bad); border-color: var(--bad); }
+.fixbtn { margin-top: 5px; font-size: 11px; padding: 3px 8px; width: 100%; }
+.fixbtn.needed { border-color: var(--bad); color: var(--bad); }
+.fixbtn.needed:hover { border-color: var(--bad); color: var(--bad); background: rgba(192, 57, 43, 0.12); }
+
+/* --- Corner adjuster --- */
+.adjuster-stage { position: relative; display: inline-block; max-width: 100%; }
+.adjuster-stage img { max-width: 100%; max-height: 70vh; display: block; border-radius: 8px; }
+.adjuster-overlay { position: absolute; inset: 0; touch-action: none; }
+.adjuster-overlay polygon {
+  fill: rgba(47, 109, 246, 0.16);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.adjuster-overlay circle.handle {
+  fill: var(--accent);
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: grab;
+}
+.adjuster-overlay circle.handle.active { fill: var(--ok); cursor: grabbing; }
+
+/* --- Corner handles: see through them, not around them --- */
+.adjuster-overlay .handle .ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0.9;
+}
+.adjuster-overlay .handle .cross {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0.9;
+}
+.adjuster-overlay .handle .dot { fill: #fff; stroke: var(--accent); stroke-width: 1; }
+.adjuster-overlay .handle .grab { fill: transparent; cursor: grab; }
+.adjuster-overlay .handle.active .ring,
+.adjuster-overlay .handle.active .cross { stroke: var(--ok); stroke-width: 2.5; opacity: 1; }
+.adjuster-overlay .handle.active .grab { cursor: grabbing; }
+.adjuster-overlay .handle-label {
+  fill: var(--accent);
+  font-size: 12px;
+  font-family: ui-monospace, Menlo, monospace;
+  pointer-events: none;
+}
+.adjuster-overlay .handle.active .handle-label { fill: var(--ok); }
+
+/* Magnifier: original pixels around the handle, so placement is verifiable not guessed. */
+.loupe-wrap { position: absolute; top: 10px; pointer-events: none; text-align: center; }
+.loupe-wrap.right { right: 10px; }
+.loupe-wrap.left { left: 10px; }
+.loupe-coord {
+  display: block;
+  margin-top: 5px;
+  font: 10px ui-monospace, Menlo, monospace;
+  color: #fff;
+  text-shadow: 0 0 5px #000, 0 0 3px #000;
+}
+
+.loupe {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+  overflow: hidden;
+}
+.loupe-cross {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(var(--ok), var(--ok)) center / 1px 100% no-repeat,
+    linear-gradient(var(--ok), var(--ok)) center / 100% 1px no-repeat;
+  opacity: 0.85;
+}
+.zoomctl { display: flex; align-items: center; gap: 8px; }
+.zoomctl input { width: 90px; }
+
+.side-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.side-tabs button { font-size: 12px; padding: 4px 12px; text-transform: capitalize; }
+.side-tabs button.active { border-color: var(--accent); color: var(--accent); }
+.thumb-sides span.manual { border-color: var(--accent); color: var(--accent); }
+
+.https-url { text-align: center; margin: 10px 0; font-size: 15px; }
+.https-url a { color: var(--accent); text-decoration: none; word-break: break-all; }
+.start-camera {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.thumb-name { margin-top: 6px; font-size: 12px; line-height: 1.3; overflow-wrap: anywhere; }
+.thumb-name em { font-style: normal; color: var(--muted); }
+.thumb-name .unidentified { color: var(--muted); font-style: italic; }
+
+/* --- Card viewer --- */
+.thumb img.clickable { cursor: zoom-in; }
+.viewer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  margin-top: 14px;
+}
+.viewer-grid figure { margin: 0; }
+.viewer-grid img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  display: block;
+}
+.viewer-grid figcaption {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ---- Batch review -------------------------------------------------------
+   One feed, sorted by whether a human is actually needed. Cards that need a
+   decision are large and legible; cards that came through cleanly sit in a
+   quiet strip at the bottom, present only so the operator can tell "nothing
+   needs me" apart from "the queue has stopped working". */
+
+.review-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.review-head h2 { margin: 0; }
+.review-actions { display: flex; gap: 0.5rem; }
+.review.busy { opacity: 0.6; pointer-events: none; }
+
+.review-list { display: flex; flex-direction: column; gap: 1rem; }
+
+.review-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 320px) 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line, #2a2a2a);
+  border-radius: 10px;
+  background: var(--panel, #141414);
+}
+/* Blocking work (which card? which variant?) is what stops a listing, so it is
+   marked. Advisory flags are the same card, quieter. */
+.review-card.blocking { border-left: 3px solid #e0a030; }
+.review-card.advisory { opacity: 0.85; }
+
+.review-images { display: flex; gap: 0.5rem; }
+.review-images img {
+  width: 100%;
+  max-width: 150px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: #0b0b0b;
+}
+
+.review-body header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.review-body .sku { font-family: ui-monospace, monospace; font-size: 0.85rem; opacity: 0.7; }
+.review-body .identified { font-weight: 600; }
+.review-body .unidentified { font-weight: 600; color: #e0a030; }
+
+.review-block { margin-top: 0.75rem; }
+.review-block h4 { margin: 0 0 0.2rem; font-size: 0.9rem; }
+.review-block .reason { margin: 0 0 0.5rem; font-size: 0.85rem; opacity: 0.75; }
+
+.choices { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.choice .muted { font-size: 0.78rem; opacity: 0.65; }
+.choice.ghost { opacity: 0.6; }
+
+.clean { margin-top: 2rem; opacity: 0.55; }
+.clean h3 { font-size: 0.95rem; font-weight: 500; margin-bottom: 0.5rem; }
+/* Same reasoning as .strip: wrap, never scroll sideways. */
+.clean-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 0.6rem;
+  padding-bottom: 0.4rem;
+}
+.clean-strip figure { margin: 0; width: 100%; }
+.clean-strip img { width: 100%; border-radius: 4px; display: block; background: #0b0b0b; }
+.clean-strip figcaption {
+  font-size: 0.68rem;
+  opacity: 0.8;
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .review-card { grid-template-columns: 1fr; }
+  .review-images img { max-width: 88px; }
+}
+
+/* Recent captures: all three renders side by side, so the operator sees what a buyer will see
+   without opening anything. */
+.thumb-set { display: flex; gap: 4px; }
+.thumb-set figure { margin: 0; flex: 1 1 0; min-width: 0; }
+.thumb-set img { width: 100%; border-radius: 4px; display: block; background: #0b0b0b; }
+.thumb-set figcaption {
+  font-size: 0.6rem;
+  opacity: 0.55;
+  text-align: center;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.variant-tag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.35rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  background: #24406a;
+  color: #cfe0ff;
+  vertical-align: middle;
+}
+.variant-tag.pending { background: #4a3a18; color: #e8cf9a; }
+
+/* ---- Mobile scanning ----------------------------------------------------
+   One big target. Everything else is read-only. Sized for a thumb on a phone
+   held in one hand while the other handles cards. */
+
+.scan { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.scan-stage {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 3 / 4;
+  max-height: 62vh;
+}
+.scan-stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Card aspect (63x88mm). Filling this is the single biggest lever on quality —
+   framing beats every algorithm downstream. */
+.scan-guide {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  height: 82%;
+  aspect-ratio: 63 / 88;
+  border: 2px dashed rgba(255, 255, 255, 0.75);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.scan-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.7rem;
+  background: linear-gradient(rgba(0,0,0,0.65), transparent);
+  font-size: 0.95rem;
+  color: #fff;
+}
+.scan-side strong { text-transform: uppercase; letter-spacing: 0.04em; }
+.scan-side.front strong { color: #7fd18a; }
+.scan-side.back strong { color: #f0c674; }
+.scan-count { font-size: 0.8rem; opacity: 0.85; }
+
+.scan-last {
+  position: absolute;
+  bottom: 0.5rem; left: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem 0.35rem 0.35rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  max-width: 78%;
+}
+.scan-last img { width: 34px; border-radius: 3px; display: block; }
+.scan-last div { display: flex; flex-direction: column; min-width: 0; }
+.scan-last strong { font-size: 0.85rem; }
+.scan-last .muted { font-size: 0.68rem; opacity: 0.7; }
+
+.scan-gesture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: 0;
+  font-size: 1rem;
+}
+
+.scan-controls { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
+.shutter {
+  width: 100%;
+  max-width: 460px;
+  min-height: 82px;
+  border-radius: 14px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 0;
+  color: #08120a;
+  background: #7fd18a;
+  cursor: pointer;
+  /* No accidental text selection or double-tap zoom on a phone. */
+  user-select: none;
+  touch-action: manipulation;
+}
+.shutter.back { background: #f0c674; color: #1a1408; }
+.shutter:disabled { opacity: 0.4; }
+.shutter:active { transform: scale(0.985); }
+
+.scan-meta {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  min-height: 1rem;
+}
+.scan-status, .scan-error { text-align: center; font-size: 0.85rem; }
+
+@media (min-width: 900px) {
+  .scan-stage { max-height: 70vh; aspect-ratio: 4 / 3; }
+}
+
+/* Variant correction, offered where the mistake is noticed. */
+.variant-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0.25rem;
+}
+.variant-picker-label { font-size: 0.8rem; opacity: 0.7; margin-right: 0.2rem; }
+.variant-opt { padding: 0.3rem 0.7rem; border-radius: 999px; font-size: 0.85rem; cursor: pointer; }
+.variant-opt.on { background: #24406a; color: #cfe0ff; font-weight: 600; }
+.variant-opt:disabled { opacity: 0.5; }
+
+/* Deferred reviews: still outstanding, just not now. Between the live queue and the clean
+   strip in prominence, because they are work the operator has promised to come back to. */
+.later { margin-top: 1.5rem; opacity: 0.85; }
+.later h3 { font-size: 0.95rem; margin-bottom: 0.5rem; }
+.later-list { display: flex; flex-direction: column; gap: 0.35rem; }
+.later-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line, #2a2a2a);
+  border-radius: 8px;
+}
+.later-row img { width: 26px; border-radius: 3px; display: block; }
+.later-name { font-weight: 600; }
+.later-row .muted { font-size: 0.78rem; opacity: 0.6; margin-left: auto; }
+
+/* Scan is a fixed, non-scrolling surface: nothing here should ever move under a thumb. */
+.scan { touch-action: manipulation; overscroll-behavior: none; }
+.scan.locked {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  padding: 0.5rem;
+  background: var(--bg, #0d0d0d);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.scan.locked .scan-stage { max-height: 68vh; }
+.scan-lock {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  opacity: 0.65;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Edge guides in the corner adjuster.
+   Extended beyond the corners so the line can be sighted along, the way a ruler is lined up
+   against an edge. A quad with four perfect corners can still cut the border along a side, and
+   the side is what edge wear is graded on. */
+.adjuster-overlay .edge-guide line {
+  stroke: rgba(120, 200, 255, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 7 5;
+  fill: none;
+  pointer-events: none;
+}
+.adjuster-overlay .edge-guide .edge-tick {
+  stroke: rgba(120, 200, 255, 0.85);
+  stroke-dasharray: none;
+  stroke-width: 1.5;
+}
+
+/* One card, everything about it. */
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.detail-head h2 { margin: 0 0 0.1rem; }
+.detail section { margin-top: 1.25rem; }
+.detail section h3 { font-size: 0.95rem; margin-bottom: 0.4rem; }
+.detail-images { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.detail-images figure { margin: 0; width: clamp(132px, 15vw, 260px); }
+.detail-images img { width: 100%; border-radius: 6px; background: #0b0b0b; display: block; }
+.detail-images figcaption { font-size: 0.68rem; opacity: 0.6; text-align: center; margin-top: 3px; }
+.detail-search { width: 100%; max-width: 420px; padding: 0.45rem 0.6rem; border-radius: 8px; }
+.detail-results { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; max-width: 520px; }
+.linklike { background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.review-images.clickable { cursor: pointer; }
+
+/* Backlog by stage. The unfilled part of each bar is the work remaining, which is the whole
+   point of the panel. */
+.progress-lead { margin: 0 0 0.75rem; font-size: 0.9rem; }
+.progress-row { margin-bottom: 0.6rem; }
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.2rem;
+}
+.progress-bar {
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.progress-bar .fill {
+  height: 100%;
+  background: #4a90d9;
+  transition: width 0.4s ease;
+}
+.progress-bar .fill.done { background: #5aa469; }
+.progress-blockers { margin-top: 1rem; }
+.progress-blockers h3 { font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8; }
+
+/* Cards waiting to go back under the camera. Above "Later" because it is physical work with a
+   clear action, not a decision that has been postponed. */
+.rescan { margin-top: 1.5rem; }
+.rescan h3 { font-size: 0.95rem; margin-bottom: 0.3rem; }
+.rescan .note { max-width: 78ch; margin: 0 0 0.5rem; font-size: 0.8rem; }
+.rescan .later-row { border-left: 3px solid #c98a3a; }
+
+/* ---- Condition grading --------------------------------------------------
+   All eleven imperfections visible at once and each one a single tap target.
+   An imperfection you cannot see is one you will not record. */
+.grading-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.grade-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  background: #2b4a2f;
+  color: #cdebd2;
+}
+.grade-badge.LP { background: #3d4a24; color: #e2eec0; }
+.grade-badge.MP { background: #4a3c1d; color: #f0dcae; }
+.grade-badge.HP { background: #4a2c1d; color: #f0c9ae; }
+.grade-badge.DMG { background: #4a1f1f; color: #f0b3b3; }
+.grade-preview { margin-left: 0.6rem; font-size: 0.85rem; opacity: 0.85; }
+.grade-explain { font-size: 0.82rem; opacity: 0.75; margin: 0 0 0.6rem; }
+
+.defect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 0.4rem;
+}
+.defect {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  border: 1px solid transparent;
+}
+.defect-name { font-size: 0.78rem; text-transform: capitalize; }
+.defect-sev { font-size: 0.68rem; opacity: 0.55; }
+/* Severity is colour-coded so the shape of a card's wear reads at a glance. */
+.defect.on { border-color: rgba(255, 255, 255, 0.25); }
+.defect.on .defect-sev { opacity: 0.95; font-weight: 600; }
+.defect.on.slight { background: #2c3f4a; }
+.defect.on.minor { background: #3d4a24; }
+.defect.on.moderate { background: #4a3c1d; }
+.defect.on.major { background: #4a2415; }
+
+/* An image slot that has nothing in it yet. Sized to the card so the row does not reflow when
+   the render lands, and worded so the gap explains itself. */
+.slot-placeholder {
+  aspect-ratio: 73 / 98;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.68rem;
+  line-height: 1.25;
+  text-align: center;
+  opacity: 0.75;
+}
+.slot-placeholder.pending { border-color: rgba(120, 170, 220, 0.45); color: #a8c8e6; }
+.slot-placeholder.failed { border-color: rgba(220, 130, 130, 0.5); color: #e6a8a8; }
+.slot-placeholder.uncaptured { color: #999; }
+
+/* ---- Approve: one card, everything needed to judge it ------------------- */
+.approve-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.approve-head h2 { margin: 0.1rem 0; }
+.approve-head .sku { font-family: ui-monospace, monospace; font-size: 0.8rem; opacity: 0.6; }
+.approve-progress { font-size: 0.9rem; opacity: 0.8; white-space: nowrap; }
+.approve-progress strong { font-size: 1.3rem; }
+
+.approve-flags {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #e0a030;
+  background: rgba(224, 160, 48, 0.07);
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+.approve-flags strong { text-transform: capitalize; margin-right: 0.4rem; }
+
+/* Listing images large — they are the thing being judged — with the supporting detail beside
+   them rather than below, so nothing needs scrolling to reach. */
+.approve-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 1.5rem; }
+.approve-listing { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.approve-listing figure { margin: 0; }
+.approve-listing img {
+  width: 100%;
+  border-radius: 10px;
+  background: #0b0b0b;
+  display: block;
+}
+.approve-listing figcaption,
+.approve-processed figcaption { font-size: 0.7rem; opacity: 0.55; text-align: center; margin-top: 4px; }
+
+.approve-side section { margin-bottom: 1.25rem; }
+.approve-side h3 { font-size: 0.85rem; margin-bottom: 0.4rem; opacity: 0.85; }
+.approve-processed { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.approve-processed img { width: 100%; border-radius: 6px; background: #0b0b0b; display: block; }
+
+/* The magnified patches. Rectification puts the number and set symbol at fixed fractions of the
+   card, so these are cropped in CSS from the same image rather than cut server-side. */
+.zoom-row { display: grid; gap: 0.5rem; }
+.zoom-patch { margin: 0; }
+.zoom-window {
+  width: 100%;
+  aspect-ratio: 24 / 7;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-repeat: no-repeat;
+  background-color: #0b0b0b;
+  image-rendering: auto;
+}
+.zoom-patch figcaption { font-size: 0.68rem; opacity: 0.6; margin-top: 3px; }
+
+.approve-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+.approve-actions .primary {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  background: #3f7d4a;
+  color: #eafaec;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.approve-actions .primary:disabled { opacity: 0.5; }
+.approve-actions .key {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+@media (max-width: 1000px) {
+  .approve-body { grid-template-columns: 1fr; }
+}
+.zoom-hint { font-size: 0.72rem; opacity: 0.6; margin: 0 0 0.4rem; }
+
+/* Inline editing on the approve screen: nothing is behind a button, because the moment to fix a
+   card is while the operator is looking at the discrepancy. */
+.identity-editor .detail-search { max-width: 100%; }
+.variant-picker.inline { margin: 0; }
+.inline-edit { margin-left: 0.5rem; font-size: 0.68rem; opacity: 0.7; }
+.approve-side .grading { margin-top: 0.2rem; }
+.approve-side .defect-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+.approve-side .defect { padding: 0.3rem 0.4rem; }
+.approve-side .defect-name { font-size: 0.7rem; }
+.approve-side .grading-head { margin-bottom: 0.3rem; }
+.approve-missing { align-self: center; font-size: 0.82rem; color: #e0a030; }
+
+/* Flags are the whole reason a card might not be approvable, and this is now the only screen
+   that shows them, so they read as a banner rather than a footnote. */
+.approve-flags h3 { margin: 0 0 0.3rem; font-size: 0.85rem; color: #e0a030; }
+.approve-flags ul { list-style: none; margin: 0; padding: 0; }
+.approve-flags li { margin-bottom: 0.2rem; }
+.approve-spacer { flex: 1; }
+.parked { font-size: 0.78rem; opacity: 0.7; margin-top: 0.2rem; }
+.parked .linklike { margin-left: 0.4rem; font-size: 0.75rem; }
+.grade-saving { font-size: 0.75rem; opacity: 0.6; align-self: center; }
+.grade-principle { font-size: 0.72rem; opacity: 0.65; margin: 0 0 0.5rem; border-left: 2px solid #6a7a8a; padding-left: 0.5rem; }
+.variant-opt.add { opacity: 0.7; border: 1px dashed rgba(255,255,255,0.3); background: none; }
+.variant-opt .added { margin-left: 0.3rem; font-size: 0.6rem; opacity: 0.6; }
+.variant-warning {
+  font-size: 0.72rem; color: #e0a030; margin: 0 0 0.35rem;
+  border-left: 2px solid #e0a030; padding-left: 0.5rem;
+}
+
+/* Condition: five buttons, nothing pre-selected, nothing assumed. */
+.condition-picker { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.cond {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 0.4rem 0.6rem; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent; text-align: left;
+}
+.cond strong { font-size: 0.85rem; }
+.cond span { font-size: 0.66rem; opacity: 0.6; }
+.cond.on { border-color: rgba(255,255,255,0.3); font-weight: 600; }
+.cond.on.NM { background: #2b4a2f; color: #cdebd2; }
+.cond.on.LP { background: #3d4a24; color: #e2eec0; }
+.cond.on.MP { background: #4a3c1d; color: #f0dcae; }
+.cond.on.HP { background: #4a2c1d; color: #f0c9ae; }
+.cond.on.DMG { background: #4a1f1f; color: #f0b3b3; }
+.cond.clear { opacity: 0.5; align-self: center; }
+.price-age { margin-left: 0.4rem; font-size: 0.72rem; opacity: 0.6; }
+.price-age.stale { color: #e0a030; opacity: 0.95; }
+.price-detail span:last-child { font-size: 0.72rem; }
+.verdict.list { color: #7fd18a; font-weight: 600; }
+.verdict.marginal { color: #f0c674; }
+.verdict.bulk { color: #999; }
+
+/* Price entry sits next to the sold-listings link: look it up, type it in, move on. */
+.price-editor { display: inline-flex; align-items: center; gap: 2px; }
+.price-editor .dollar { opacity: 0.6; font-size: 0.8rem; }
+.price-editor input {
+  width: 66px; padding: 0.15rem 0.3rem; border-radius: 5px; font-size: 0.82rem;
+}
+.price-editor button { padding: 0.15rem 0.45rem; font-size: 0.72rem; border-radius: 5px; }
+.sold-link { margin-left: 0.6rem; font-size: 0.75rem; }
+.price-headline { display: flex; align-items: baseline; gap: 0.5rem; }
+.price-headline strong { font-size: 1.35rem; }
+.price-breakdown { font-size: 0.74rem; opacity: 0.7; margin: 0.15rem 0 0.3rem; }
+.verdict { font-size: 0.78rem; margin: 0 0 0.5rem; }
+.price-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; }
+.price-floored { font-size: 0.7rem; color: #e0a030; opacity: 0.9; margin: 0 0 0.4rem; }
+
+/* ---- Inventory: the whole collection, sorted by what matters ------------- */
+.inv-totals {
+  display: flex; flex-wrap: wrap; gap: 1.5rem;
+  padding: 0.9rem 1.1rem; margin-bottom: 1rem;
+  border: 1px solid var(--line, #2a2a2a); border-radius: 10px;
+  background: var(--panel, #141414);
+}
+.inv-totals div { display: flex; flex-direction: column; }
+.inv-totals strong { font-size: 1.5rem; line-height: 1.1; }
+.inv-totals span { font-size: 0.72rem; opacity: 0.6; }
+
+.inv-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+.inv-controls .spacer { flex: 1; }
+.inv-controls label { font-size: 0.78rem; opacity: 0.8; display: flex; align-items: center; gap: 0.3rem; }
+.chip { padding: 0.28rem 0.7rem; border-radius: 999px; font-size: 0.8rem; cursor: pointer; }
+.chip.on { background: #24406a; color: #cfe0ff; font-weight: 600; }
+
+.inv-selection {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;
+  padding: 0.5rem 0.75rem; margin-bottom: 0.6rem;
+  border-radius: 8px; background: rgba(74, 144, 217, 0.12);
+  border: 1px solid rgba(74, 144, 217, 0.3);
+}
+
+.inv-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.inv-table th {
+  text-align: left; font-weight: 500; font-size: 0.72rem; opacity: 0.6;
+  padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line, #2a2a2a);
+}
+.inv-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.inv-table tr.on { background: rgba(74, 144, 217, 0.1); }
+.inv-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.inv-thumb { width: 30px; border-radius: 3px; display: block; background: #0b0b0b; }
+.small { font-size: 0.7rem; }
+
+.lots { margin-top: 1.5rem; }
+.lot { padding: 0.6rem 0.8rem; border: 1px solid var(--line, #2a2a2a); border-radius: 8px; margin-bottom: 0.5rem; }
+.lot-head { display: flex; align-items: baseline; gap: 0.6rem; }
+.lot-head .ghost { margin-left: auto; opacity: 0.5; font-size: 0.72rem; }
+.lot-economics { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.8rem; margin-top: 0.3rem; }
+.advantage { color: #7fd18a; font-weight: 600; }
+.lot-price { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.35rem; font-size: 0.8rem; }
+.lot-price input { width: 80px; padding: 0.15rem 0.35rem; border-radius: 5px; }
+.lot-price .muted { font-size: 0.72rem; }
+a.chip { text-decoration: none; }
+
+/* ---- eBay listing helper ------------------------------------------------
+   Numbered steps, because this is the screen someone unfamiliar with the app
+   will be handed. The listing is still created on eBay; this fills the parts
+   that are tedious by hand. */
+.listing-steps { margin: 0 0 1rem; padding-left: 1.4rem; }
+.listing-steps li { margin-bottom: 0.7rem; font-size: 0.85rem; }
+.listing-steps li strong { display: block; margin-bottom: 0.15rem; }
+.listing-steps .muted { display: block; font-size: 0.75rem; margin-top: 0.15rem; }
+.listing-paste { display: inline-flex; gap: 0.3rem; margin-top: 0.2rem; }
+.listing-paste input { width: min(420px, 60vw); padding: 0.3rem 0.5rem; border-radius: 6px; }
+.primary-link {
+  display: inline-block; margin-top: 0.2rem; padding: 0.4rem 0.9rem;
+  background: #3f7d4a; color: #eafaec; border-radius: 8px;
+  text-decoration: none; font-weight: 600; font-size: 0.85rem;
+}
+.copyable { margin-bottom: 0.8rem; }
+.copyable-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; margin-bottom: 0.2rem; }
+.copyable-head button { margin-left: auto; font-size: 0.72rem; padding: 0.15rem 0.5rem; }
+.copyable pre {
+  margin: 0; padding: 0.5rem 0.7rem; border-radius: 8px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--line, #2a2a2a);
+  white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; line-height: 1.4;
+}
+.listing-pair { display: flex; gap: 2rem; margin-bottom: 0.8rem; }
+.field-label { font-size: 0.72rem; opacity: 0.6; display: block; }
+.field-value { font-size: 0.95rem; font-weight: 600; }
+
+/* Listing: item specifics and the editable title. */
+.title-edit {
+  width: 100%;
+  font: inherit;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: inherit;
+  resize: vertical;
+}
+.over-limit { color: var(--bad, #c0392b); font-weight: 600; }
+.specifics { margin-top: 1rem; }
+.specifics table { width: 100%; border-collapse: collapse; }
+.specifics th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  width: 11rem;
+  padding: 0.3rem 0.6rem 0.3rem 0;
+  vertical-align: top;
+}
+.specifics td { padding: 0.3rem 0; vertical-align: top; }
+.specifics tr + tr th, .specifics tr + tr td { border-top: 1px solid var(--border); }
+.specific-copy { width: 4.5rem; text-align: right; }
+.specific-copy button { font-size: 0.8em; padding: 0.1rem 0.4rem; }
+
+/* ── eBay queue ───────────────────────────────────────────────────────────
+   One card at a time. The photographs are large because they are the thing
+   being sold; everything else is a field to paste somewhere. */
+.ebay { width: 100%; }
+.ebay-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem;
+}
+.ebay-filters { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.ebay-filters button { padding: 0.35rem 0.75rem; }
+.ebay-filters button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.ebay-filters .count {
+  margin-left: 0.4rem; opacity: 0.75; font-variant-numeric: tabular-nums;
+}
+.ebay-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; margin-bottom: 0.75rem;
+}
+.ebay-card {
+  display: grid; grid-template-columns: minmax(220px, 1fr) 2.2fr;
+  gap: 1.5rem; align-items: start;
+}
+.ebay-photos { display: grid; gap: 0.6rem; }
+.ebay-photos img {
+  width: 100%; border-radius: 6px; border: 1px solid var(--border); background: var(--panel);
+}
+.ebay-form { min-width: 0; }
+.ebay-form h3 { margin: 0 0 0.75rem; }
+.ebay-form h3 .muted { font-weight: 400; font-size: 0.85em; }
+.ebay-steps { margin: 0 0 1.1rem; padding-left: 1.2rem; display: grid; gap: 0.8rem; }
+.ebay-steps li { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.step-label { font-weight: 600; }
+.ebay-paste { display: flex; gap: 0.35rem; flex: 1 1 18rem; }
+.ebay-paste input { flex: 1; }
+.ebay-field { display: grid; gap: 0.3rem; margin-bottom: 0.9rem; min-width: 0; }
+.ebay-field > span:first-child { font-size: 0.85em; color: var(--muted); }
+.ebay-field .with-button { display: flex; gap: 0.35rem; }
+.ebay-field .with-button input { flex: 1; min-width: 0; font: inherit; }
+.ebay-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.ebay-save { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+.ebay-done { margin-top: 1.1rem; display: flex; align-items: center; gap: 0.75rem; }
+button.big { padding: 0.6rem 1.1rem; font-size: 1.02em; }
+.ok-chip {
+  background: var(--good-bg, #e6f4ea); color: var(--good, #1e7e34);
+  border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.85em; font-weight: 600;
+}
+.warn-chip {
+  background: var(--warn-bg, #fff4e5); color: var(--warn, #a05a00);
+  border-radius: 999px; padding: 0.1rem 0.6rem; font-size: 0.8em; margin-left: 0.5rem;
+}
+.ebay-blocked {
+  border-left: 3px solid var(--warn, #d08700); background: var(--warn-bg, #fff8ec);
+  padding: 0.6rem 0.9rem; border-radius: 4px; margin-bottom: 1rem;
+}
+.ebay-blocked ul { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+.ebay-details { margin-top: 0.6rem; }
+.ebay-details summary { cursor: pointer; color: var(--muted); }
+.specifics-table { width: 100%; border-collapse: collapse; margin: 0.6rem 0; }
+.specifics-table th {
+  text-align: left; font-weight: 500; color: var(--muted); width: 10rem;
+  padding: 0.25rem 0.6rem 0.25rem 0; vertical-align: top;
+}
+.specifics-table td { padding: 0.25rem 0; vertical-align: top; }
+.specifics-table tr + tr th, .specifics-table tr + tr td { border-top: 1px solid var(--border); }
+.specifics-table button { font-size: 0.78em; padding: 0.1rem 0.4rem; }
+.link-button {
+  background: none; border: none; padding: 0; color: var(--accent);
+  cursor: pointer; text-decoration: underline; font-size: 0.88em;
+}
+@media (max-width: 800px) {
+  .ebay-card { grid-template-columns: 1fr; }
+  .ebay-photos { grid-template-columns: 1fr 1fr; }
+  .ebay-row { grid-template-columns: 1fr; }
+}
+
+/* Corner close-ups and the bulk-upload panel. */
+.photo-label { font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.detail-grid img { width: 100%; border-radius: 4px; border: 1px solid var(--border); }
+.export-panel {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.7rem 0.9rem; margin-bottom: 1rem; background: var(--panel);
+}
+.export-head { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+.export-warn { margin: 0.5rem 0 0; }
+.export-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.7rem; margin-top: 0.8rem;
+}
+.export-fields label { display: grid; gap: 0.25rem; }
+.export-fields span { font-size: 0.82em; color: var(--muted); }
+.export-fields input { font: inherit; width: 100%; }
+.held-reasons {
+  margin: 0.4rem 0; padding: 0; list-style: none;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.15rem 1rem;
+}
+.held-reasons strong { color: var(--text, inherit); font-variant-numeric: tabular-nums; }
+.photo-howto { margin-top: 0.5rem; }
+.photo-howto summary { cursor: pointer; }
+.photo-howto-list, .photo-howto ol { margin: 0.5rem 0 0; padding-left: 1.2rem; display: grid; gap: 0.4rem; }
+.photo-howto code {
+  background: var(--code-bg, rgba(127,127,127,0.18)); padding: 0.1rem 0.35rem;
+  border-radius: 3px; font-size: 0.92em;
+}
+.inv-search { min-width: 11rem; font: inherit; }
+.inv-price { width: 4.5rem; font: inherit; margin-left: 0.25rem; }
+select.chip { font: inherit; }
+.autolot {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.6rem 0.9rem; margin-bottom: 0.9rem; background: var(--panel);
+}
+
+/* Scanning sessions, and the destructive actions. */
+.sessions {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.6rem 0.9rem; margin-bottom: 0.9rem; background: var(--panel);
+}
+.sessions-head { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
+.sessions-table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; }
+.sessions-table td { padding: 0.3rem 0.6rem 0.3rem 0; vertical-align: middle; }
+.sessions-table tr + tr td { border-top: 1px solid var(--border); }
+.sessions-table td:last-child { text-align: right; white-space: nowrap; }
+.sessions-table button { margin-left: 0.35rem; font-size: 0.85em; }
+.sessions-table .is-current td { font-weight: 500; }
+button.danger {
+  border-color: var(--bad, #c0392b);
+  color: var(--bad, #c0392b);
+}
+button.danger:hover:not(:disabled) { background: var(--bad, #c0392b); color: #fff; }
+.linklike.danger-link { color: var(--bad, #c0392b); }
+td .linklike + .linklike { margin-left: 0.6rem; }
+
+/* ── The scanner batch screen ─────────────────────────────────────────────
+   Cards are shown large on purpose: the photograph is the product, and a tidy
+   thumbnail grid hides exactly the flaw this screen exists to catch. */
+.batch { width: 100%; }
+.batch-bar {
+  display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.7rem 0.9rem; margin-bottom: 1rem; background: var(--panel);
+}
+.batch-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 1rem;
+}
+.batch-card {
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; background: var(--panel);
+}
+.batch-shot {
+  display: block; width: 100%; padding: 0; border: none; background: none; cursor: zoom-in;
+}
+.batch-shot img { width: 100%; border-radius: 4px; display: block; }
+.batch-shot span { color: var(--muted); font-size: 0.85em; }
+.batch-meta { margin-top: 0.4rem; font-size: 0.9em; }
+.batch-actions { margin-top: 0.3rem; display: flex; gap: 0.7rem; }
+/* An expanded card takes the full row: `grid-column` on a child of a grid *item* does nothing,
+   which is why the photographs first appeared squeezed into one narrow column. */
+.batch-card.expanded { grid-column: 1 / -1; }
+.batch-card.expanded .batch-shot { max-width: 300px; }
+.batch-photos {
+  margin-top: 0.6rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem;
+}
+.batch-photos figure { margin: 0; }
+.batch-photos img { width: 100%; border-radius: 4px; border: 1px solid var(--border); }
+.batch-photos figcaption { font-size: 0.78em; text-align: center; }
+.batch-archive { margin-top: 1.6rem; }
+
+/* Editing one card. A mode, not controls on every card — the screen's job is to let a pile
+   go past quickly, and handles everywhere would fight that. */
+.card-editor {
+  margin-top: 0.6rem; padding: 0.7rem;
+  border: 1px solid var(--accent); border-radius: 6px;
+}
+.editor-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.7rem;
+}
+.editor-slider { display: flex; align-items: center; gap: 0.6rem; }
+.editor-slider input { width: 11rem; }
+.editor-preview {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; margin: 0.5rem 0;
+}
+.editor-preview img { width: 100%; border-radius: 4px; border: 1px solid var(--border); }

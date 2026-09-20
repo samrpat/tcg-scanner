@@ -1,0 +1,135 @@
+name: tcg-scanner
+
+# ── Running a published build ──────────────────────────────────────────────────────────────
+#
+# This file needs no source checkout. It pulls images from a registry and keeps everything in
+# named Docker volumes, so an install is this file plus a password:
+#
+#     curl -O https://<where you host it>/docker-compose.release.yml
+#     printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 24)" > .env
+#     docker compose -f docker-compose.release.yml up -d
+#
+# Then open http://localhost:8080 and choose a password. The schema migrates itself on first
+# boot; there is nothing else to run.
+#
+# `TCG_IMAGE` points at wherever the images are published, and `TCG_TAG` at which build.
+# `scripts/release.sh` builds and pushes both.
+
+x-hardening: &hardening
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:16-alpine
+    mem_limit: 1g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tcg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tcg}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tcg} -d ${POSTGRES_DB:-tcg}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    <<: *hardening
+    image: redis:7.4-alpine
+    mem_limit: 320m
+    # noeviction: this holds the job queue, and dropping a key to make room means a scanned
+    # card whose processing silently never happens.
+    command:
+      ["redis-server", "--save", "60", "1", "--appendonly", "no",
+       "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *hardening
+    image: ${TCG_IMAGE:-ghcr.io/OWNER/tcg-scanner-api}:${TCG_TAG:-latest}
+    mem_limit: 1g
+    env_file: [.env]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      SCANNER_MODE: "${SCANNER_MODE:-true}"
+      AUTH_REQUIRED: "${AUTH_REQUIRED:-true}"
+    volumes:
+      # Named volumes, not bind mounts: an install should not need a directory layout, and a
+      # volume survives `docker compose down` where a bind mount to a moved folder does not.
+      - images:/data/images
+      - artcache:/data/art-cache
+      - thumbnails:/data/thumbnails
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    <<: *hardening
+    image: ${TCG_IMAGE:-ghcr.io/OWNER/tcg-scanner-api}:${TCG_TAG:-latest}
+    mem_limit: 2g
+    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    env_file: [.env]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      SCANNER_MODE: "${SCANNER_MODE:-true}"
+      # Only the api migrates; two containers off one image would otherwise race.
+      RUN_MIGRATIONS: "0"
+    volumes:
+      - images:/data/images
+      - artcache:/data/art-cache
+      - thumbnails:/data/thumbnails
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  web:
+    <<: *hardening
+    image: ${TCG_WEB_IMAGE:-ghcr.io/OWNER/tcg-scanner-web}:${TCG_TAG:-latest}
+    mem_limit: 128m
+    ports:
+      - "${WEB_PORT:-8080}:80"
+      # HTTPS, which a phone needs before it will hand over its camera. Serves only once a
+      # certificate exists in the certs volume.
+      - "${WEB_TLS_PORT:-8443}:443"
+    volumes:
+      - certs:/etc/nginx/certs:ro
+    depends_on:
+      api: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  pgdata:
+  redisdata:
+  images:
+  artcache:
+  thumbnails:
+  certs:

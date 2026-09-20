@@ -1,0 +1,147 @@
+name: tcg
+
+x-api-base: &api-base
+  # No build here on purpose: api and worker must share ONE image. Giving each its own
+  # build stanza makes Compose produce two images, and `docker compose build api` then
+  # silently leaves the worker running stale code.
+  image: tcg-scanner-api:local
+  env_file: [.env]
+  environment:
+    PYTHONUNBUFFERED: "1"
+  volumes:
+    # Card art never changes, so it is cached to disk and must survive a container rebuild.
+    # Without this the Pi re-downloads its whole working set on every deploy.
+    - ./data/images:/data/images
+    - ./data/art-cache:/data/art-cache
+    # Derived previews. Losing them costs one resize, never any data.
+    - ./data/thumbnails:/data/thumbnails
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: [.env]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tcg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tcg}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tcg} -d ${POSTGRES_DB:-tcg}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    # Deliberately not published to the host (spec §42).
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # The only service that builds the shared image.
+  api:
+    <<: *api-base
+    build:
+      context: ./api
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Same image as api, different command. Rebuild it with `docker compose build api`.
+  worker:
+    <<: *api-base
+    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis,os; redis.Redis(host=os.environ['REDIS_HOST']).ping()"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  web:
+    build:
+      context: ./web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+      # HTTPS, needed for the camera on anything that is not localhost. Serves only when a
+      # certificate exists; see `make cert`.
+      - "${WEB_TLS_PORT:-8443}:443"
+    volumes:
+      - ./data/certs:/etc/nginx/certs:ro
+    depends_on:
+      api: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # A read-only window onto the card photographs, for eBay bulk uploads only.
+  #
+  # eBay fetches listing pictures from URLs, so a bulk file can only carry photos if this host
+  # is reachable from the internet. This app has NO AUTHENTICATION, so exposing it wholesale
+  # would hand the collection to anyone who found the address. This serves the JPEGs and
+  # nothing else — no API, no writes, no directory listings.
+  #
+  # Off by default. Start it only while an upload is in flight:
+  #   make photos-on     then     make photos-off
+  photos:
+    image: nginx:1.27-alpine
+    profiles: ["photos"]
+    ports:
+      - "${PHOTOS_PORT:-8081}:80"
+    volumes:
+      - ./photos/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Read-only: this container can never modify a stored photograph.
+      - ./data/images:/data/images:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  # The public address eBay fetches photographs from.
+  #
+  # A Cloudflare quick tunnel: no account, no port forwarding, no DNS. It points at the photos
+  # server above and nothing else, so what is exposed is card JPEGs — which are about to be
+  # public on a listing anyway — and not the unauthenticated API.
+  #
+  # The address changes every restart, which is why the app reads it from the tunnel's own
+  # metrics endpoint rather than asking anyone to copy it.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["photos"]
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://photos:80
+    depends_on:
+      photos: {condition: service_started}
+    restart: unless-stopped
+
+  # Optional local TCGdex mirror (D-010). Enable with: docker compose --profile tcgdex up -d
+  # Then set TCGDEX_BASE_URL=http://tcgdex:3000/v2 in .env.
+  # Note: the self-hosted image serves card data only; pricing comes from the hosted API.
+  tcgdex:
+    image: tcgdex/server:latest
+    profiles: ["tcgdex"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

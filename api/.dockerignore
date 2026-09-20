@@ -1,0 +1,16 @@
+# The card-back photograph. Nintendo / Creatures / GAME FREAK artwork, used only to compute ORB
+# features — and those are baked into `pokemon-back.npz`, which is what registration loads.
+# Keeping the photograph out of the image means a distributable build carries the fingerprint
+# and not the picture. Rebuild the descriptors with `make bake-reference`.
+app/imaging/assets/pokemon-back.jpg
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Tests are not needed at runtime; `make test` bind-mounts them instead.
+tests/

@@ -1,0 +1,43 @@
+.env
+*.env
+!.env.example
+
+data/
+!data/.gitkeep
+
+# Self-signed TLS material — regenerate with `make cert`, never commit a private key.
+data/certs/
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+node_modules/
+web/dist/
+.vite/
+
+.DS_Store
+*.log
+*.sqlite
+.mode
+
+# The card-back photograph. Nintendo / Creatures / GAME FREAK artwork, kept out of built
+# images by api/.dockerignore — and a public repository is more exposed than an image, not
+# less. What registration actually loads is `pokemon-back.npz`, the ORB descriptors computed
+# from it, and that IS committed: it is a fingerprint, not a reproduction.
+#
+# Anyone cloning this needs their own photograph of a card back and `make bake-reference`.
+# docs/DISTRIBUTION.md says so.
+**/imaging/assets/pokemon-back.jpg
+web/tsconfig.tsbuildinfo
+
+# The design log. Kept locally, not published: it is a running account of how and why every
+# decision on this project was made, including the commercial ones, and that is a different
+# thing from the code. The D-NNN references left behind in CHANGELOG.md and docs/ are
+# deliberate — see the note in README.md.
+DECISIONS.md
