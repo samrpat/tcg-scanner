@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TCG Scanner — photograph trading cards to a consistent standard</title>
+<meta name="description" content="Self-hosted. Photographs trading cards rectified to a true 88x63mm, squared, with corner close-ups, and exports a batch ready for a bulk listing tool.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1012; --panel: #17181c; --border: #26282e;
+    --text: #ececf1; --muted: #9a9aa6; --accent: #5b8cff;
+    --sans: "Ubuntu", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Ubuntu Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 56rem; margin: 0 auto; padding: 0 1.25rem; }
+  header { padding: 5rem 0 3rem; }
+  h1 { font-size: clamp(2rem, 6vw, 3.1rem); line-height: 1.12; margin: 0 0 1rem; letter-spacing: -0.02em; }
+  .lede { font-size: clamp(1.05rem, 2.6vw, 1.3rem); color: var(--muted); max-width: 44ch; margin: 0 0 2rem; }
+  .cta { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-block; padding: 0.7rem 1.3rem; border-radius: 10px;
+    background: var(--accent); color: #fff; text-decoration: none; font-weight: 700;
+  }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  h2 { font-size: 1.5rem; margin: 3.5rem 0 1rem; letter-spacing: -0.01em; }
+  p { max-width: 68ch; }
+  .muted { color: var(--muted); }
+  pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem 1.1rem; overflow-x: auto; font: 0.86rem/1.65 var(--mono);
+  }
+  code { font-family: var(--mono); font-size: 0.9em; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); margin-top: 1.5rem; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.2rem; }
+  .card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+  .card p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  ul { max-width: 68ch; padding-left: 1.2rem; }
+  li { margin-bottom: 0.4rem; }
+  footer { margin: 5rem 0 3rem; padding-top: 2rem; border-top: 1px solid var(--border); font-size: 0.85rem; color: var(--muted); }
+  footer p { max-width: 68ch; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Photographs of cards, to a standard.</h1>
+  <p class="lede">
+    Point a camera at a card and you get a snapshot. This gives you the card: flat on, square,
+    cropped to its true size, with the corners close enough to judge — the same way, every time.
+  </p>
+  <div class="cta">
+    <a class="btn" href="#install">Install it</a>
+    <a class="btn ghost" href="https://github.com/OWNER/REPO">Source on GitHub</a>
+  </div>
+</header>
+
+<h2>What it does</h2>
+<div class="grid">
+  <div class="card">
+    <h3>Rectified, not cropped</h3>
+    <p>Every card is dewarped to a true 88&times;63&nbsp;mm and squared, so a hundred cards come
+       out looking like a hundred cards from one seller.</p>
+  </div>
+  <div class="card">
+    <h3>Corner close-ups</h3>
+    <p>Four crops per card, cut as you scan. Corner whitening and edge wear decide the grade,
+       and a whole-card photograph resolves neither.</p>
+  </div>
+  <div class="card">
+    <h3>Extra shots</h3>
+    <p>A second pass for the few cards that need one — a holo tilted so the foil reads, a crease
+       close up. Never rectified; the angle is the point.</p>
+  </div>
+  <div class="card">
+    <h3>Batches that export</h3>
+    <p>Scan a pile, check it, download one folder, archive, next. Filenames carry their order so
+       the gallery image lands first.</p>
+  </div>
+  <div class="card">
+    <h3>Counts a bulk uploader can use</h3>
+    <p>Uploaders chunk a flat folder by photos-per-card. It tells you that number before you
+       download, and splits the folder when a batch has two.</p>
+  </div>
+  <div class="card">
+    <h3>Yours, on your hardware</h3>
+    <p>Runs on a Raspberry Pi or any machine with Docker. No account, no upload, no third party
+       between you and your collection.</p>
+  </div>
+</div>
+
+<h2 id="install">Install</h2>
+<p>Docker, and two minutes.</p>
+<pre><code>mkdir tcg-scanner &amp;&amp; cd tcg-scanner
+curl -O https://raw.githubusercontent.com/OWNER/REPO/main/docker-compose.release.yml
+printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 24)" &gt; .env
+docker compose -f docker-compose.release.yml up -d</code></pre>
+<p>
+  Then open <code>http://localhost:8080</code> and choose a password. The database sets itself
+  up on first boot and a short introduction explains the rest. Nothing else to run.
+</p>
+<p class="muted">
+  Scanning from a phone needs the <code>https://</code> address, because a browser will not
+  hand a page the camera over plain HTTP. The app tells you which address to use.
+</p>
+
+<h2>Honest about what it is not</h2>
+<ul>
+  <li><strong>One account per install.</strong> There is no way to add a second person.</li>
+  <li><strong>It has not been run on a Raspberry Pi yet.</strong> That is the target and the
+      instructions are right, but every measurement so far is from a Mac.</li>
+  <li><strong>Self-signed TLS only.</strong> Fine on a home network; there is no Let's Encrypt.</li>
+  <li><strong>No import.</strong> An existing collection cannot be brought in.</li>
+  <li><strong>English cards.</strong> The card-back reference is the English back.</li>
+</ul>
+
+<footer>
+  <p>
+    Licensed under the GNU Affero General Public License v3.0. You may run it, read it, change
+    it and share it; if you run a modified version as a service, you share your source too.
+    For terms without that obligation, get in touch.
+  </p>
+  <p>
+    Pok&eacute;mon and the Pok&eacute;mon TCG are trademarks of Nintendo, Creatures Inc. and
+    GAME FREAK inc. This project is unaffiliated with and unendorsed by any of them, and ships
+    no card artwork.
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
