@@ -235,14 +235,38 @@ def test_no_password_is_a_stored_decision_not_an_empty_field():
     serves everything. A column records which."""
     import inspect
 
-    from app.authz import instance_is_open
+    from app.authz import refresh_instance_flag
     from app.routers.auth import claim
 
     assert "auth_disabled = True" in inspect.getsource(claim)
     # And an unclaimed instance is never read as an open one.
-    source = inspect.getsource(instance_is_open)
-    assert "user.auth_disabled" in source
-    assert "return False" in source  # a database that cannot answer is not a yes
+    source = inspect.getsource(refresh_instance_flag)
+    assert "user and user.auth_disabled" in source
+    assert "_OPEN_INSTANCE = False" in source  # a database that cannot answer is not a yes
+
+
+def test_the_open_flag_is_never_read_on_the_request_path():
+    """It was, briefly, and it put a query back on the refusal path that D-177 had removed —
+    then failed *open* when the query misbehaved, which is the wrong direction for a gate.
+
+    It is read at startup and re-read by whoever changes it. The request path reads a
+    variable.
+    """
+    import inspect
+
+    from app import authz
+
+    assert not inspect.iscoroutinefunction(authz.instance_is_open)
+    source = inspect.getsource(authz.instance_is_open)
+    assert "new_session" not in source
+    assert "select" not in source
+
+    # Unknown is closed.
+    authz._OPEN_INSTANCE = None
+    assert authz.instance_is_open() is False
+    authz._OPEN_INSTANCE = True
+    assert authz.instance_is_open() is True
+    authz._OPEN_INSTANCE = False
 
 
 def test_the_recovery_code_is_hashed_like_a_password():

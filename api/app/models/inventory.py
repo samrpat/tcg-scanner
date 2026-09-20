@@ -135,6 +135,14 @@ class InventoryItem(Base):
         ForeignKey("scan_sessions.id", ondelete="SET NULL"),
         index=True,
     )
+    # Which division of that batch. Null is a card scanned before any section existed, or one
+    # whose section was deleted — SET NULL, because removing a heading must never remove the
+    # cards under it.
+    section_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("batch_sections.id", ondelete="SET NULL"),
+        index=True,
+    )
     # Set when the operator confirms the listing is live on eBay. This is the queue's progress
     # mark, so it is set on their say-so — not when they open the eBay tab, because opening a
     # tab is not listing.
@@ -315,6 +323,30 @@ class ScanSession(Base):
     # A property of the batch rather than of the browser, so the worker can act on it — a switch
     # that only decided what went into a download never caused a single corner to be made.
     corner_shots: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+
+class BatchSection(Base):
+    """A division within one batch.
+
+    The operator sorts a pile before scanning it — reverse holos, normals, unidentified — and
+    then sorts each of those by condition. Sections keep that work: cards land in whichever
+    one is current, so the piles on the bench and the groups on the screen are the same thing.
+
+    Flat rather than nested. The sort is two levels deep and a name carries that fine
+    ("Reverse holo · NM"); a tree would add a dimension to every screen for no gain.
+    """
+
+    __tablename__ = "batch_sections"
+
+    id: Mapped[uuid.UUID] = pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    # Explicit, because sections get reordered and "when it was made" cannot express "this one
+    # goes first now".
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = created()
 
 
 class EbayUploadTemplate(Base):

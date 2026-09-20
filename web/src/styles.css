@@ -1636,3 +1636,16 @@ td .linklike + .linklike { margin-left: 0.6rem; }
   overflow-wrap: anywhere;
 }
 .gate-foot .linklike { font-size: inherit; }
+
+/* ── Sections within a batch ─────────────────────────────────────────────────────────── */
+.batch-section + .batch-section { margin-top: 1.5rem; }
+.batch-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0 0.5rem;
+  margin-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.batch-section-head .chip { font-size: 0.7rem; }

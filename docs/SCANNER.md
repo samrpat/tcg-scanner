@@ -220,11 +220,33 @@ an archive list of eleven identical-looking dates is something to search rather 
 
 Only the label changes. Nothing keys off a batch's name — the id is the identity.
 
+### Sections
+
+A batch is an evening's scanning; it is usually not one pile. Sort the cards before you scan
+them — reverse holos, normals, unknowns, then each of those by condition — and keep that shape
+with **+ section**.
+
+New scans land in the last section, so the loop is: name the pile, scan it, name the next one.
+Click a heading to rename it. **remove section** takes the heading and leaves every card where
+it is.
+
+**a folder per section** puts each one in its own folder in the download, and composes with
+the photo-count split:
+
+```
+01 Reverse holo - NM/7-photos-per-card/CARD-000061-1-front.jpg
+02 Reverse holo - LP/7-photos-per-card/CARD-000063-1-front.jpg
+00 unsorted/…
+```
+
+Numbered so they sort in the order you scanned them. Upload each folder as its own batch and
+every listing gets the right condition and the right photographs.
+
 ### Moving cards between batches
 
 Groupings get made wrong: a pile shot across a break lands in two, a card belonging to
 yesterday's lot turns up today, a batch gets archived one card early. Tick **move** on the cards
-and pick a destination — an existing batch, or *a new batch*, which is created closed so that
+and pick a destination — a section of this batch, another batch, or *a new batch*, which is created closed so that
 making somewhere to put cards does not quietly redirect the scanner into it mid-pile.
 
 Only the grouping changes. No photograph is touched, nothing is reprocessed, and moving them

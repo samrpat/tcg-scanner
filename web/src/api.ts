@@ -323,6 +323,46 @@ export const api = {
 
   revokeDevice: (id: string) => del<{ revoked: string }>(`/api/auth/devices/${id}`),
 
+  // ── sections within a batch ──────────────────────────────────────────────────────────
+
+  sections: (sessionId: string) =>
+    get<{
+      sections: {
+        id: string;
+        name: string;
+        position: number;
+        cards: number;
+        current: boolean;
+      }[];
+      unsectioned: number;
+    }>(`/api/sessions/${sessionId}/sections`),
+
+  /** Start a new division. It goes on the end and new scans land in it. */
+  createSection: (sessionId: string, name: string) =>
+    post<{ id: string; name: string; position: number }>(
+      `/api/sessions/${sessionId}/sections`,
+      { name },
+    ),
+
+  renameSection: (sessionId: string, id: string, name: string) =>
+    patch<{ id: string; name: string }>(
+      `/api/sessions/${sessionId}/sections/${id}`,
+      { name },
+    ),
+
+  /** Remove the heading. The cards stay in the batch, without a section. */
+  deleteSection: (sessionId: string, id: string) =>
+    del<{ deleted: string; cards_kept: number }>(
+      `/api/sessions/${sessionId}/sections/${id}`,
+    ),
+
+  /** Move cards into a section, or out of every section with the id "none". */
+  moveIntoSection: (sessionId: string, id: string, skus: string[]) =>
+    post<{ section_id: string; moved: number; missing: string[] }>(
+      `/api/sessions/${sessionId}/sections/${id}/cards`,
+      { skus },
+    ),
+
   /** What a download of this batch would contain, grouped by photographs per card — the
    *  number a bulk uploader has to be told. */
   photoGroups: (sessionId: string) =>
@@ -760,6 +800,8 @@ export type InventoryRow = {
   approved: boolean;
   lot: string | null;
   session_id: string | null;
+  /** Which division of the batch, if any. */
+  section_id: string | null;
   thumbnail: string | null;
   /** How many extra shots this card carries (0-3). */
   extras: number;

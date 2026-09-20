@@ -175,6 +175,7 @@ async def list_inventory(
                 "approved": item.approved_at is not None,
                 "lot": lot_names.get(item.lot_id),
                 "session_id": str(item.session_id) if item.session_id else None,
+                "section_id": str(item.section_id) if item.section_id else None,
                 "thumbnail": image_url(
                     by_kind.get(ImageKind.LISTING_FRONT)
                     or by_kind.get(ImageKind.PROCESSED_FRONT)

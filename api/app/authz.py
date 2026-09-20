@@ -39,7 +39,9 @@ _CACHE_TTL = 30.0
 # Whether the operator chose, at first run, to run without a password. Cached for the same
 # reason and read only when a request has no session — which on an open instance is every
 # request, hence the cache, and on a closed one is only the refusals.
-_OPEN_INSTANCE: tuple[bool, float] | None = None
+# None until it has been read at startup. None means closed: a gate that opens because it has
+# not checked yet is not a gate.
+_OPEN_INSTANCE: bool | None = None
 
 
 def forget(token: str) -> None:
@@ -47,9 +49,9 @@ def forget(token: str) -> None:
 
 
 def forget_all() -> None:
-    global _OPEN_INSTANCE
+    """Drop every cached decision. Sessions age out on their own; the instance flag is
+    re-read by whoever changed it."""
     _CACHE.clear()
-    _OPEN_INSTANCE = None
 
 
 def _cached(token: str) -> str | None:
@@ -87,17 +89,18 @@ async def authenticate(request: Request) -> None:
         _CACHE[token] = (str(user.id), time.monotonic())
 
 
-async def instance_is_open() -> bool:
-    """Whether this instance was set up without a password.
+async def refresh_instance_flag() -> bool:
+    """Read the open/closed choice from the database and remember it.
 
-    A deliberate choice made at first run, stored in the database rather than the environment
-    so it can be made — and reversed — from the screen rather than from a file and a restart.
+    Called once at startup and again whenever the choice changes. **Not** from the request
+    path: an earlier version did that and put a query back on the refusal path, which is
+    exactly what D-177 took off it — the cheapest request to make against this service must
+    not be the one that hits Postgres.
+
+    Worse, it failed the wrong way. With the read inline, anything unexpected resolved to
+    "open" and the middleware let the request through; a security decision must fail closed.
     """
     global _OPEN_INSTANCE
-    if _OPEN_INSTANCE is not None:
-        value, checked = _OPEN_INSTANCE
-        if time.monotonic() - checked <= _CACHE_TTL:
-            return value
 
     from sqlalchemy import select
 
@@ -109,14 +112,22 @@ async def instance_is_open() -> bool:
             user = (
                 await session.execute(select(User).where(User.email == DEFAULT_USER_EMAIL))
             ).scalar_one_or_none()
-            # An unclaimed instance is not an open one. "No password yet" means the choice has
-            # not been made, and the safe reading of an unanswered question is no.
-            value = bool(user and user.auth_disabled)
-    except Exception:  # noqa: BLE001 - a database that cannot answer does not mean "let them in"
-        return False
+            # An unclaimed instance is not an open one. "No password yet" means the question
+            # has not been answered, and the safe reading of an unanswered question is no.
+            _OPEN_INSTANCE = bool(user and user.auth_disabled)
+    except Exception:  # noqa: BLE001 - a database that cannot answer is not a yes
+        log.warning("authz.instance_flag_unreadable", detail="assuming a password is required")
+        _OPEN_INSTANCE = False
+    return _OPEN_INSTANCE
 
-    _OPEN_INSTANCE = (value, time.monotonic())
-    return value
+
+def instance_is_open() -> bool:
+    """Whether this instance was set up without a password.
+
+    Reads a remembered value and nothing else. Unknown means closed — a gate that opens
+    because it could not check is not a gate.
+    """
+    return _OPEN_INSTANCE is True
 
 
 async def middleware(request: Request, call_next):
@@ -129,7 +140,7 @@ async def middleware(request: Request, call_next):
     if request.state.user_id is not None:
         return await call_next(request)
 
-    if await instance_is_open():
+    if instance_is_open():
         return await call_next(request)
 
     # Refused without touching the database, deliberately.

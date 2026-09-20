@@ -25,7 +25,7 @@ from app.config import settings
 from app.db import get_session
 from app.enums import ImageKind
 from app.logging_setup import get_logger
-from app.models import Image, InventoryItem, ScanSession, User
+from app.models import BatchSection, Image, InventoryItem, ScanSession, User
 from app.routers.capture import current_user
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -607,6 +607,13 @@ def photo_plan(items, order: list[tuple[ImageKind, str]]) -> dict:
     }
 
 
+def _safe_name(name: str) -> str:
+    """A section name as a folder name. Sections are named by hand and a name with a slash in
+    it would otherwise invent a directory level inside the zip."""
+    cleaned = re.sub(r"[^A-Za-z0-9._ -]+", "-", name).strip(" -.")
+    return cleaned[:60] or "section"
+
+
 def group_folder(count: int) -> str:
     """The folder a card with this many photographs goes in.
 
@@ -614,6 +621,246 @@ def group_folder(count: int) -> str:
     from it.
     """
     return f"{count}-photos-per-card"
+
+
+class SectionIn(BaseModel):
+    name: str
+
+
+class SectionMoveIn(BaseModel):
+    skus: list[str]
+
+
+async def current_section(session: AsyncSession, batch: ScanSession) -> BatchSection | None:
+    """The section new scans join: the last one in the batch's order.
+
+    "Last" rather than "most recently created", so reordering also changes where the next card
+    lands — which is what somebody who just dragged a section to the end would expect.
+    """
+    return (
+        await session.execute(
+            select(BatchSection)
+            .where(BatchSection.session_id == batch.id)
+            .order_by(BatchSection.position.desc(), BatchSection.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _batch_or_404(session: AsyncSession, session_id, user: User) -> ScanSession:
+    target = (
+        await session.execute(
+            select(ScanSession).where(
+                ScanSession.id == session_id, ScanSession.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="no such session")
+    return target
+
+
+@router.get("/{session_id}/sections")
+async def list_sections(
+    session_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """The divisions in this batch, in order, with how many cards each holds."""
+    target = await _batch_or_404(session, session_id, user)
+    rows = (
+        (
+            await session.execute(
+                select(BatchSection)
+                .where(BatchSection.session_id == target.id)
+                .order_by(BatchSection.position, BatchSection.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    counts = dict(
+        (
+            await session.execute(
+                select(InventoryItem.section_id, func.count(InventoryItem.id))
+                .where(InventoryItem.session_id == target.id)
+                .group_by(InventoryItem.section_id)
+            )
+        ).all()
+    )
+    current = await current_section(session, target)
+    return {
+        "sections": [
+            {
+                "id": str(row.id),
+                "name": row.name,
+                "position": row.position,
+                "cards": counts.get(row.id, 0),
+                "current": current is not None and row.id == current.id,
+            }
+            for row in rows
+        ],
+        # Cards scanned before any section existed, or whose section was deleted.
+        "unsectioned": counts.get(None, 0),
+    }
+
+
+@router.post("/{session_id}/sections")
+async def create_section(
+    session_id: uuid.UUID,
+    body: SectionIn,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Start a new division, and send new scans into it.
+
+    The physical act is putting down one pile and picking up the next, so this is one button
+    and one name — not a dialog with a position field. It goes on the end, which is where the
+    pile you are about to scan belongs.
+    """
+    target = await _batch_or_404(session, session_id, user)
+    name = body.name.strip()[:120]
+    if not name:
+        raise HTTPException(status_code=422, detail="a section needs a name")
+
+    highest = (
+        await session.execute(
+            select(func.max(BatchSection.position)).where(
+                BatchSection.session_id == target.id
+            )
+        )
+    ).scalar_one()
+
+    created = BatchSection(
+        session_id=target.id, name=name, position=(highest or 0) + 1
+    )
+    session.add(created)
+    await session.commit()
+    await session.refresh(created)
+    log.info("section.created", session_id=str(target.id), name=created.name)
+    return {"id": str(created.id), "name": created.name, "position": created.position}
+
+
+@router.patch("/{session_id}/sections/{section_id}")
+async def rename_section(
+    session_id: uuid.UUID,
+    section_id: uuid.UUID,
+    body: SectionIn,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    target = await _batch_or_404(session, session_id, user)
+    row = (
+        await session.execute(
+            select(BatchSection).where(
+                BatchSection.id == section_id, BatchSection.session_id == target.id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such section")
+    name = body.name.strip()[:120]
+    if not name:
+        raise HTTPException(status_code=422, detail="a section needs a name")
+    row.name = name
+    await session.commit()
+    return {"id": str(row.id), "name": row.name}
+
+
+@router.delete("/{session_id}/sections/{section_id}")
+async def delete_section(
+    session_id: uuid.UUID,
+    section_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Remove a division. The cards stay in the batch, without one.
+
+    Never the cards. Deleting a heading is a statement about the grouping, exactly as deleting
+    a batch is — and losing an evening's scanning by tidying up a label would be unforgivable.
+    """
+    target = await _batch_or_404(session, session_id, user)
+    row = (
+        await session.execute(
+            select(BatchSection).where(
+                BatchSection.id == section_id, BatchSection.session_id == target.id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such section")
+
+    freed = (
+        await session.execute(
+            select(func.count(InventoryItem.id)).where(InventoryItem.section_id == row.id)
+        )
+    ).scalar_one()
+    await session.delete(row)
+    await session.commit()
+    log.info("section.deleted", section_id=str(section_id), cards_kept=freed)
+    return {"deleted": str(section_id), "cards_kept": freed}
+
+
+@router.post("/{session_id}/sections/{section_id}/cards")
+async def move_into_section(
+    session_id: uuid.UUID,
+    section_id: str,
+    body: SectionMoveIn,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Move cards into a section, or out of every section with `section_id=none`.
+
+    Scanning into the wrong pile happens; so does deciding a card belongs in the other one
+    after looking at it large. Only the grouping changes.
+    """
+    target = await _batch_or_404(session, session_id, user)
+
+    destination: uuid.UUID | None = None
+    if section_id != "none":
+        try:
+            wanted_id = uuid.UUID(section_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="not a section id") from exc
+        row = (
+            await session.execute(
+                select(BatchSection).where(
+                    BatchSection.id == wanted_id, BatchSection.session_id == target.id
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="no such section")
+        destination = row.id
+
+    wanted = [s.strip().upper() for s in body.skus if s.strip()]
+    if not wanted:
+        raise HTTPException(status_code=400, detail="no cards given")
+
+    items = (
+        (
+            await session.execute(
+                select(InventoryItem).where(
+                    InventoryItem.user_id == user.id,
+                    InventoryItem.session_id == target.id,
+                    InventoryItem.sku.in_(wanted),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for item in items:
+        item.section_id = destination
+    await session.commit()
+
+    found = {item.sku for item in items}
+    return {
+        "section_id": section_id,
+        "moved": len(items),
+        # A card named here but not in this batch is reported rather than silently ignored.
+        "missing": sorted(set(wanted) - found),
+    }
 
 
 @router.get("/{session_id}/photos.zip")
@@ -628,6 +875,10 @@ async def download_photos(
     # switch, so the download matches what the batch was told to make; passing it explicitly
     # overrides that for one download without changing the batch.
     corners: bool | None = Query(None),
+    # A folder per section, composed with `layout` rather than replacing it: the operator
+    # sorted the pile into reverse holos and normals *and* needs a fixed photo count per
+    # upload, and those are two different questions about the same download.
+    by_section: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ) -> Response:
@@ -684,6 +935,25 @@ async def download_photos(
         sku: group["photos"] for group in plan["groups"] for sku in group["skus"]
     }
 
+    folders: dict[uuid.UUID | None, str] = {}
+    if by_section:
+        sections = (
+            (
+                await session.execute(
+                    select(BatchSection)
+                    .where(BatchSection.session_id == target.id)
+                    .order_by(BatchSection.position, BatchSection.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # Numbered, so the folders sort in the order the piles were scanned rather than
+        # alphabetically — "01 Reverse holo NM" before "02 Reverse holo LP".
+        for index, row in enumerate(sections, start=1):
+            folders[row.id] = f"{index:02d} {_safe_name(row.name)}"
+        folders[None] = "00 unsorted"
+
     storage = get_storage()
     buffer = io.BytesIO()
     written = 0
@@ -709,6 +979,8 @@ async def download_photos(
                         path = f"{group_folder(counts[item.sku])}/{name}"
                     else:
                         path = name
+                    if by_section:
+                        path = f"{folders.get(item.section_id, '00 unsorted')}/{path}"
                     archive.writestr(path, storage.get(stored.path))
                     written += 1
                 except Exception as exc:  # noqa: BLE001 - one missing file, not a failed zip

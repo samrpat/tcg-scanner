@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-20 (later)
+
+### Sections within a batch
+- A batch can be divided, and new scans land in the current division. Sort the pile into
+  reverse holos, normals and unknowns, then by condition, and the screen keeps that shape.
+  See D-178.
+- **+ section** starts one; headings rename in place; **remove section** takes the heading and
+  never the cards.
+- The move dropdown now offers sections of this batch alongside other batches — one question,
+  "where do these go?", rather than two controls.
+- **a folder per section** in the download, composing with the photo-count split:
+  `01 Reverse holo - NM/7-photos-per-card/…`. Folders numbered so they sort in scanning order.
+
+### Fixed
+- **A gate that failed open.** The new open/closed instance flag was read from the database on
+  every refusal, and let requests through when that read misbehaved — four endpoints answered
+  200 with no session. It is read at startup now, the request path reads a variable, and
+  unknown means closed. See D-179.
+
 ## 2026-09-20
 
 ### Privacy

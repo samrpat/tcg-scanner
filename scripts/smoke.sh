@@ -138,6 +138,21 @@ print("true" if cur and cur[0]["corner_shots"] else "false")' 2>/dev/null)
   expect GET "/api/sessions/00000000-0000-0000-0000-000000000000/photo-groups" 404
   expect GET "/api/sessions/$CUR/photos.zip?layout=sideways" 422
 
+  # Sections. Created, renamed, used as a download axis, then removed — so the batch is left
+  # exactly as it was found.
+  expect GET "/api/sessions/$CUR/sections" 200
+  SEC=$(curl -s -b "$JAR" -X POST -H 'content-type: application/json' \
+        -d '{"name":"smoke test section"}' "$BASE/api/sessions/$CUR/sections" \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' 2>/dev/null)
+  if [ -n "$SEC" ]; then
+    expect PATCH "/api/sessions/$CUR/sections/$SEC" 200 '{"name":"smoke test renamed"}'
+    expect PATCH "/api/sessions/$CUR/sections/$SEC" 422 '{"name":"   "}'
+    expect GET "/api/sessions/$CUR/photos.zip?by_section=true" 200
+    expect POST "/api/sessions/$CUR/sections/$SEC/cards" 400 '{"skus":[]}'
+    expect DELETE "/api/sessions/$CUR/sections/$SEC" 200
+  fi
+  expect GET "/api/sessions/00000000-0000-0000-0000-000000000000/sections" 404
+
   # Renaming. Set to the name it already has, so the endpoint runs and the batch is unchanged.
   NAME=$(curl -s -b "$JAR" "$BASE/api/sessions" | python3 -c 'import json,sys
 d=json.load(sys.stdin)

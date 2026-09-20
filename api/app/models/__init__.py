@@ -21,6 +21,7 @@ from app.enums import (
 )
 from app.models.inventory import (
     AuthSession,
+    BatchSection,
     ConditionAssessment,
     EbayUploadTemplate,
     Image,
@@ -44,6 +45,7 @@ from app.models.selling import Listing, ListingItem, MarketplaceAccount, Marketp
 
 __all__ = [
     "AuthSession",
+    "BatchSection",
     "Lot",
     "AssessmentSource",
     "Card",

@@ -60,6 +60,27 @@ export default function Batch() {
     }
   };
   const [plan, setPlan] = useState<Awaited<ReturnType<typeof api.photoGroups>> | null>(null);
+  const [sections, setSections] = useState<
+    Awaited<ReturnType<typeof api.sections>>["sections"]
+  >([]);
+  // A folder per section in the download. Composes with the photo-count split rather than
+  // replacing it: "reverse holos separately" and "a fixed photo count per upload" are two
+  // different questions about the same zip.
+  const [bySection, setBySection] = useState(() => {
+    try {
+      return localStorage.getItem("batch-by-section") === "on";
+    } catch {
+      return false;
+    }
+  });
+  const setBySectionRemembered = (on: boolean) => {
+    setBySection(on);
+    try {
+      localStorage.setItem("batch-by-section", on ? "on" : "off");
+    } catch {
+      /* private browsing */
+    }
+  };
 
   // What the photo-count plan was last computed for. The plan comes from the server — the
   // same two functions the download uses, so it can never disagree with it — but it only
@@ -78,6 +99,7 @@ export default function Batch() {
         ? await api.inventory(undefined, false, { session_id: shown })
         : { cards: [] };
       setCards(inv.cards);
+      setSections(shown ? (await api.sections(shown)).sections : []);
 
       // Everything the plan depends on: which cards, how many extra shots each carries, and
       // the batch's corner switch.
@@ -121,6 +143,31 @@ export default function Batch() {
   // browser: as a local preference it only decided what went into a download, so a batch scanned
   // with it on still had no corners in it, because nothing ever cut them.
   const corners = shownBatch?.corner_shots ?? true;
+
+  // Cards under their section, in the sections' own order, with anything unsectioned last.
+  // Empty sections are dropped from the view but kept in the dropdown — a heading with
+  // nothing under it is noise on this screen and a valid destination in that one.
+  const groups = (() => {
+    const bySectionId = new Map<string | null, InventoryRow[]>();
+    for (const card of cards) {
+      const key = card.section_id;
+      const bucket = bySectionId.get(key);
+      if (bucket) bucket.push(card);
+      else bySectionId.set(key, [card]);
+    }
+    const out: {
+      key: string;
+      section: (typeof sections)[number] | null;
+      cards: InventoryRow[];
+    }[] = [];
+    for (const section of sections) {
+      const held = bySectionId.get(section.id);
+      if (held?.length) out.push({ key: section.id, section, cards: held });
+    }
+    const loose = bySectionId.get(null);
+    if (loose?.length) out.push({ key: "none", section: null, cards: loose });
+    return out;
+  })();
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
@@ -167,9 +214,7 @@ export default function Batch() {
             {cards.length > 0 ? (
               <a
                 className="primary-link"
-                href={`/api/sessions/${shownBatch.id}/photos.zip${
-                  split ? "?layout=count" : ""
-                }`}
+                href={downloadUrl(shownBatch.id, split, bySection)}
                 download
               >
                 Download all photos (.zip) ↓
@@ -187,6 +232,33 @@ export default function Batch() {
                 />
                 split by photo count
               </label>
+            ) : null}
+            {cards.length > 0 && sections.length > 0 ? (
+              <label className="chip" title="A folder per section in the download">
+                <input
+                  type="checkbox"
+                  checked={bySection}
+                  onChange={(e) => setBySectionRemembered(e.target.checked)}
+                />
+                a folder per section
+              </label>
+            ) : null}
+            {!isArchivedView ? (
+              <button
+                disabled={busy}
+                title="Start a new pile. Cards scanned from now on land in it."
+                onClick={() => {
+                  const name = window.prompt(
+                    "Name this section — the pile you are about to scan.\n\n" +
+                      "e.g. Reverse holo · NM",
+                  );
+                  if (name?.trim()) {
+                    act(() => api.createSection(shownBatch.id, name.trim()));
+                  }
+                }}
+              >
+                + section
+              </button>
             ) : null}
 
             {/* Outside the "has cards" guard on purpose: this decides what an empty batch will
@@ -289,7 +361,15 @@ export default function Batch() {
           count={selected.size}
           busy={busy}
           batches={session.sessions.filter((s) => s.id !== shownBatch?.id)}
+          sections={sections}
           onClear={() => setSelected(new Set())}
+          onMoveToSection={(sectionId) =>
+            act(async () => {
+              const skus = [...selected];
+              await api.moveIntoSection(shownBatch!.id, sectionId, skus);
+              setSelected(new Set());
+            })
+          }
           onMove={(destination) =>
             act(async () => {
               const skus = [...selected];
@@ -318,88 +398,126 @@ export default function Batch() {
         </p>
       ) : null}
 
-      <div className="batch-grid">
-        {cards.map((c) => (
-          <div
-            className={
-              open === c.sku || editing === c.sku ? "batch-card expanded" : "batch-card"
-            }
-            key={c.sku}
-          >
-            <button
-              className="batch-shot"
-              title="See it large"
-              onClick={() => setOpen(open === c.sku ? null : c.sku)}
-            >
-              {c.thumbnail ? (
-                // A 400px copy, not the 2.7 MB original: a grid of twenty cards was fetching
-                // fifty megabytes to draw pictures a few hundred pixels wide.
-                <img src={`${c.thumbnail}&w=400`} alt={c.sku} loading="lazy" />
-              ) : (
-                <span>processing…</span>
-              )}
-            </button>
-            <div className="batch-meta">
-              <strong>{c.sku}</strong>
-              {c.name ? <span className="muted"> {c.name}</span> : null}
-            </div>
-            <div className="batch-actions">
-              <label className="chip" title="Tick to move this card to another batch">
-                <input
-                  type="checkbox"
-                  checked={selected.has(c.sku)}
-                  onChange={() => toggle(c.sku)}
+      {groups.map((group) => (
+        <section className="batch-section" key={group.key}>
+          {/* The heading only appears once there is more than one group. A batch nobody has
+              divided should not grow a heading saying so. */}
+          {groups.length > 1 ? (
+            <div className="batch-section-head">
+              {group.section ? (
+                <SectionName
+                  sessionId={shownBatch?.id ?? ""}
+                  section={group.section}
+                  busy={busy}
+                  onChanged={load}
+                  onError={setError}
                 />
-                move
-              </label>
-              <button
-                className="linklike"
-                disabled={busy}
-                title="Front and back were shot the wrong way round"
-                onClick={() => {
-                  if (!window.confirm(`Swap ${c.sku}'s front and back?`)) return;
-                  act(() => api.swapSides(c.sku));
-                }}
-              >
-                swap sides
-              </button>
-              <button
-                className="linklike danger-link"
-                disabled={busy}
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      `Delete ${c.sku}?\n\nIts photographs go too. This cannot be undone.`,
-                    )
-                  )
-                    return;
-                  act(() => api.deleteCards([c.sku]));
-                }}
-              >
-                delete
-              </button>
+              ) : (
+                <strong className="muted">Not in a section</strong>
+              )}
+              <span className="muted">
+                {group.cards.length} card{group.cards.length === 1 ? "" : "s"}
+              </span>
+              {group.section?.current && !isArchivedView ? (
+                <span className="chip">new scans land here</span>
+              ) : null}
+              <span className="spacer" />
+              {group.section && !isArchivedView ? (
+                <SectionDelete
+                  sessionId={shownBatch?.id ?? ""}
+                  section={group.section}
+                  busy={busy}
+                  onDeleted={load}
+                  onError={setError}
+                />
+              ) : null}
             </div>
-            {open === c.sku ? (
-              <BatchPhotos
-                sku={c.sku}
-                corners={corners}
-                extras={c.extras}
-                busy={busy}
-                onChanged={load}
-                onError={setError}
-                onEdit={() => setEditing(c.sku)}
-              />
-            ) : null}
-            {editing === c.sku ? (
-              <CardEditor
-                sku={c.sku}
-                onClose={() => setEditing(null)}
-                onChanged={load}
-              />
-            ) : null}
+          ) : null}
+
+          <div className="batch-grid">
+            {group.cards.map((c) => (
+              <div
+              className={
+                open === c.sku || editing === c.sku ? "batch-card expanded" : "batch-card"
+              }
+              key={c.sku}
+            >
+              <button
+                className="batch-shot"
+                title="See it large"
+                onClick={() => setOpen(open === c.sku ? null : c.sku)}
+              >
+                {c.thumbnail ? (
+                  // A 400px copy, not the 2.7 MB original: a grid of twenty cards was fetching
+                  // fifty megabytes to draw pictures a few hundred pixels wide.
+                  <img src={`${c.thumbnail}&w=400`} alt={c.sku} loading="lazy" />
+                ) : (
+                  <span>processing…</span>
+                )}
+              </button>
+              <div className="batch-meta">
+                <strong>{c.sku}</strong>
+                {c.name ? <span className="muted"> {c.name}</span> : null}
+              </div>
+              <div className="batch-actions">
+                <label className="chip" title="Tick to move this card to another batch">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(c.sku)}
+                    onChange={() => toggle(c.sku)}
+                  />
+                  move
+                </label>
+                <button
+                  className="linklike"
+                  disabled={busy}
+                  title="Front and back were shot the wrong way round"
+                  onClick={() => {
+                    if (!window.confirm(`Swap ${c.sku}'s front and back?`)) return;
+                    act(() => api.swapSides(c.sku));
+                  }}
+                >
+                  swap sides
+                </button>
+                <button
+                  className="linklike danger-link"
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Delete ${c.sku}?\n\nIts photographs go too. This cannot be undone.`,
+                      )
+                    )
+                      return;
+                    act(() => api.deleteCards([c.sku]));
+                  }}
+                >
+                  delete
+                </button>
+              </div>
+              {open === c.sku ? (
+                <BatchPhotos
+                  sku={c.sku}
+                  corners={corners}
+                  extras={c.extras}
+                  busy={busy}
+                  onChanged={load}
+                  onError={setError}
+                  onEdit={() => setEditing(c.sku)}
+                />
+              ) : null}
+              {editing === c.sku ? (
+                <CardEditor
+                  sku={c.sku}
+                  onClose={() => setEditing(null)}
+                  onChanged={load}
+                />
+              ) : null}
+            </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </section>
+      ))}
 
       {session && session.sessions.length > 1 ? (
         <section className="batch-archive">
@@ -753,16 +871,33 @@ function MoveBar({
   count,
   busy,
   batches,
+  sections,
   onMove,
+  onMoveToSection,
   onClear,
 }: {
   count: number;
   busy: boolean;
   batches: { id: string; name: string; cards: number }[];
+  sections: { id: string; name: string; cards: number }[];
   onMove: (destination: string) => void;
+  onMoveToSection: (sectionId: string) => void;
   onClear: () => void;
 }) {
   const [destination, setDestination] = useState("");
+
+  // One dropdown for two kinds of destination, because from where the operator is standing it
+  // is one question — "where do these go?" — and splitting it into two controls would make
+  // them choose a mechanism before choosing a place.
+  const go = () => {
+    if (!destination) return;
+    if (destination.startsWith("section:")) {
+      onMoveToSection(destination.slice("section:".length));
+    } else {
+      onMove(destination);
+    }
+  };
+
   return (
     <div className="move-bar">
       <strong>
@@ -774,21 +909,154 @@ function MoveBar({
         disabled={busy}
         onChange={(e) => setDestination(e.target.value)}
       >
-        <option value="">choose a batch…</option>
-        {batches.map((b) => (
-          <option key={b.id} value={b.id}>
-            {b.name} ({b.cards})
-          </option>
-        ))}
-        <option value="new">a new batch</option>
+        <option value="">choose where…</option>
+        {sections.length ? (
+          <optgroup label="a section of this batch">
+            {sections.map((s) => (
+              <option key={s.id} value={`section:${s.id}`}>
+                {s.name} ({s.cards})
+              </option>
+            ))}
+            <option value="section:none">out of any section</option>
+          </optgroup>
+        ) : null}
+        <optgroup label="another batch">
+          {batches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name} ({b.cards})
+            </option>
+          ))}
+          <option value="new">a new batch</option>
+        </optgroup>
       </select>
-      <button disabled={busy || !destination} onClick={() => onMove(destination)}>
+      <button disabled={busy || !destination} onClick={go}>
         Move
       </button>
       <button className="linklike" disabled={busy} onClick={onClear}>
         clear
       </button>
     </div>
+  );
+}
+
+/** The download link for a batch, with whichever splits are switched on. */
+function downloadUrl(sessionId: string, byCount: boolean, bySection: boolean): string {
+  const params = new URLSearchParams();
+  if (byCount) params.set("layout", "count");
+  if (bySection) params.set("by_section", "true");
+  const query = params.toString();
+  return `/api/sessions/${sessionId}/photos.zip${query ? `?${query}` : ""}`;
+}
+
+/**
+ * A section heading: its name, editable in place, and a way to remove it.
+ *
+ * Renaming matters more here than on a batch. A section is named in a hurry, from a prompt,
+ * while holding a pile of cards — "RH NM" at the time and unreadable a week later.
+ */
+function SectionName({
+  sessionId,
+  section,
+  busy,
+  onChanged,
+  onError,
+}: {
+  sessionId: string;
+  section: { id: string; name: string };
+  busy: boolean;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(section.name);
+  const settled = useRef(false);
+
+  const save = async () => {
+    if (settled.current) return;
+    settled.current = true;
+    setEditing(false);
+    if (draft.trim() === section.name || !draft.trim()) return;
+    try {
+      await api.renameSection(sessionId, section.id, draft.trim());
+      onChanged();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        className="batch-name"
+        disabled={busy}
+        title="Rename this section"
+        onClick={() => {
+          setDraft(section.name);
+          settled.current = false;
+          setEditing(true);
+        }}
+      >
+        {section.name}
+      </button>
+    );
+  }
+  return (
+    <input
+      className="batch-name-input"
+      autoFocus
+      value={draft}
+      maxLength={120}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") save();
+        if (e.key === "Escape") {
+          settled.current = true;
+          setDraft(section.name);
+          setEditing(false);
+        }
+      }}
+    />
+  );
+}
+
+/** Removing a heading. Never the cards under it, and the confirm says so. */
+function SectionDelete({
+  sessionId,
+  section,
+  busy,
+  onDeleted,
+  onError,
+}: {
+  sessionId: string;
+  section: { id: string; name: string };
+  busy: boolean;
+  onDeleted: () => void;
+  onError: (message: string) => void;
+}) {
+  return (
+    <button
+      className="linklike danger-link"
+      disabled={busy}
+      title="Remove the heading. The cards stay."
+      onClick={async () => {
+        if (
+          !window.confirm(
+            `Remove the section "${section.name}"?\n\n` +
+              "Its cards stay in this batch — only the heading goes.",
+          )
+        )
+          return;
+        try {
+          await api.deleteSection(sessionId, section.id);
+          onDeleted();
+        } catch (e) {
+          onError(e instanceof Error ? e.message : String(e));
+        }
+      }}
+    >
+      remove section
+    </button>
   );
 }
 

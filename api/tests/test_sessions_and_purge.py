@@ -301,3 +301,66 @@ def test_turning_corners_off_changes_which_groups_come_out():
     without = photo_plan([item], export_order(corners=False, kind="listing"))
     assert with_corners["groups"][0]["photos"] == 4
     assert without["groups"][0]["photos"] == 3
+
+
+# ── sections within a batch ────────────────────────────────────────────────────────────────
+
+
+def test_deleting_a_section_keeps_its_cards():
+    """A heading is a statement about grouping, never about cards. The same reasoning that
+    makes deleting a batch keep its contents by default — losing an evening's scanning by
+    tidying up a label would be unforgivable."""
+    from app.routers.sessions import delete_section
+
+    source = inspect.getsource(delete_section)
+    assert "purge" not in source
+    assert "cards_kept" in source
+    # The foreign key does the work, and it must be SET NULL rather than CASCADE.
+    from app.models import InventoryItem
+
+    fk = next(iter(InventoryItem.__table__.c.section_id.foreign_keys))
+    assert fk.ondelete == "SET NULL"
+
+
+def test_new_cards_land_in_the_current_section():
+    """The physical act is putting down one pile and picking up the next. A card should land
+    in the section matching the pile in the operator's hand without them saying so per card."""
+    from app.services.capture import capture
+
+    source = inspect.getsource(capture)
+    assert "current_section" in source
+    assert "section_id=section.id if section else None" in source
+
+
+def test_the_current_section_is_the_last_one_in_order():
+    """"Last" rather than "most recently created", so reordering also changes where the next
+    card lands — which is what somebody who just moved a section to the end expects."""
+    from app.routers.sessions import current_section
+
+    source = inspect.getsource(current_section)
+    assert "BatchSection.position.desc()" in source
+
+
+def test_a_section_name_cannot_invent_a_directory():
+    """Section names are typed by hand and become folder names in the export. A name with a
+    slash in it would otherwise add a level inside the zip that nobody asked for."""
+    from app.routers.sessions import _safe_name
+
+    assert "/" not in _safe_name("Reverse holo / NM")
+    assert ".." not in _safe_name("../../etc/passwd")
+    assert _safe_name("") == "section"
+    assert _safe_name("   ") == "section"
+    assert len(_safe_name("x" * 200)) <= 60
+    # Ordinary names survive intact, because the point is a readable folder.
+    assert _safe_name("Reverse holo - NM") == "Reverse holo - NM"
+
+
+def test_the_two_download_splits_compose():
+    """"Reverse holos separately" and "a fixed photo count per upload" are different questions
+    about the same zip, so they must not be alternatives."""
+    from app.routers.sessions import download_photos
+
+    source = inspect.getsource(download_photos)
+    assert "by_section" in source
+    # Section is the outer folder; the count split nests inside it.
+    assert 'path = f"{folders.get(item.section_id' in source

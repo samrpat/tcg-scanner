@@ -192,6 +192,7 @@ async def claim(
         user.auth_disabled = True
         await session.commit()
         authz.forget_all()
+        await authz.refresh_instance_flag()
         log.warning(
             "auth.claimed_without_password",
             detail="this instance is now readable and writable by anything that can reach it",
@@ -209,6 +210,7 @@ async def claim(
     )
     await session.commit()
     authz.forget_all()
+    await authz.refresh_instance_flag()
     _set_cookie(response, request, token)
     log.info("auth.claimed")
     # The one and only time this is readable.
@@ -409,6 +411,7 @@ async def recover(
     await auth_service.revoke_all(session, user)
     await session.commit()
     authz.forget_all()
+    await authz.refresh_instance_flag()
     await _clear_failures(request)
 
     token = await auth_service.issue_session(
@@ -464,6 +467,7 @@ async def require_password(
     )
     await session.commit()
     authz.forget_all()
+    await authz.refresh_instance_flag()
     _set_cookie(response, request, token)
     log.info("auth.password_required_now")
     return {"password": True, "recovery_code": recovery}

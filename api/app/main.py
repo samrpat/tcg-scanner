@@ -42,6 +42,10 @@ LISTING_ROUTERS = (conditioning, review, ebay)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     log.info("api.start", storage=settings.storage_backend, tags=settings.tags)
+    # Read once, here, so the request path never has to. See app/authz.py.
+    from app.authz import refresh_instance_flag
+
+    log.info("api.instance_open", value=await refresh_instance_flag())
     yield
     await dispose_engine()
     log.info("api.stop")

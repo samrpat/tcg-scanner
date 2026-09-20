@@ -122,11 +122,21 @@ async def capture(
         owner = await session.get(_User, user_id)
         batch = await ensure_open_session(session, owner) if owner else None
 
+        # And into whichever division of that batch is current, if any. The operator sorts the
+        # pile before scanning it; a card should land in the section that matches the pile in
+        # their hand, without them saying so per card.
+        section = None
+        if batch is not None:
+            from app.routers.sessions import current_section
+
+            section = await current_section(session, batch)
+
         item = InventoryItem(
             user_id=user_id,
             sku=await next_sku(session, user_id),
             status=InventoryStatus.CAPTURED,
             session_id=batch.id if batch else None,
+            section_id=section.id if section else None,
         )
         session.add(item)
         await session.flush()
