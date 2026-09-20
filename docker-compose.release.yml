@@ -5,7 +5,7 @@ name: tcg-scanner
 # This file needs no source checkout. It pulls images from a registry and keeps everything in
 # named Docker volumes, so an install is this file plus a password:
 #
-#     curl -O https://<where you host it>/docker-compose.release.yml
+#     curl -O https://raw.githubusercontent.com/samrpat/tcg-scanner/main/docker-compose.release.yml
 #     printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 24)" > .env
 #     docker compose -f docker-compose.release.yml up -d
 #
@@ -61,7 +61,7 @@ services:
 
   api:
     <<: *hardening
-    image: ${TCG_IMAGE:-ghcr.io/OWNER/tcg-scanner-api}:${TCG_TAG:-latest}
+    image: ${TCG_IMAGE:-ghcr.io/samrpat/tcg-scanner-api}:${TCG_TAG:-latest}
     mem_limit: 1g
     env_file: [.env]
     environment:
@@ -88,7 +88,7 @@ services:
 
   worker:
     <<: *hardening
-    image: ${TCG_IMAGE:-ghcr.io/OWNER/tcg-scanner-api}:${TCG_TAG:-latest}
+    image: ${TCG_IMAGE:-ghcr.io/samrpat/tcg-scanner-api}:${TCG_TAG:-latest}
     mem_limit: 2g
     command: ["arq", "app.jobs.worker.WorkerSettings"]
     env_file: [.env]
@@ -109,7 +109,7 @@ services:
 
   web:
     <<: *hardening
-    image: ${TCG_WEB_IMAGE:-ghcr.io/OWNER/tcg-scanner-web}:${TCG_TAG:-latest}
+    image: ${TCG_WEB_IMAGE:-ghcr.io/samrpat/tcg-scanner-web}:${TCG_TAG:-latest}
     mem_limit: 128m
     ports:
       - "${WEB_PORT:-8080}:80"

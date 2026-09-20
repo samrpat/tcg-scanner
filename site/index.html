@@ -60,7 +60,7 @@
   </p>
   <div class="cta">
     <a class="btn" href="#install">Install it</a>
-    <a class="btn ghost" href="https://github.com/OWNER/REPO">Source on GitHub</a>
+    <a class="btn ghost" href="https://github.com/samrpat/tcg-scanner">Source on GitHub</a>
   </div>
 </header>
 
@@ -101,7 +101,7 @@
 <h2 id="install">Install</h2>
 <p>Docker, and two minutes.</p>
 <pre><code>mkdir tcg-scanner &amp;&amp; cd tcg-scanner
-curl -O https://raw.githubusercontent.com/OWNER/REPO/main/docker-compose.release.yml
+curl -O https://raw.githubusercontent.com/samrpat/tcg-scanner/main/docker-compose.release.yml
 printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 24)" &gt; .env
 docker compose -f docker-compose.release.yml up -d</code></pre>
 <p>

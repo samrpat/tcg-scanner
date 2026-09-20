@@ -5,8 +5,8 @@
 # everything else. Building only the one you happen to be on is the classic way to publish an
 # image that half your users cannot run.
 #
-#     TCG_IMAGE=ghcr.io/you/tcg-scanner-api \
-#     TCG_WEB_IMAGE=ghcr.io/you/tcg-scanner-web \
+#     TCG_IMAGE=ghcr.io/samrpat/tcg-scanner-api \
+#     TCG_WEB_IMAGE=ghcr.io/samrpat/tcg-scanner-web \
 #     ./scripts/release.sh v0.1.0
 set -euo pipefail
 
@@ -16,8 +16,8 @@ if [[ -z "$TAG" ]]; then
   exit 2
 fi
 
-API_IMAGE="${TCG_IMAGE:-ghcr.io/OWNER/tcg-scanner-api}"
-WEB_IMAGE="${TCG_WEB_IMAGE:-ghcr.io/OWNER/tcg-scanner-web}"
+API_IMAGE="${TCG_IMAGE:-ghcr.io/samrpat/tcg-scanner-api}"
+WEB_IMAGE="${TCG_WEB_IMAGE:-ghcr.io/samrpat/tcg-scanner-web}"
 PLATFORMS="${PLATFORMS:-linux/arm64,linux/amd64}"
 REVISION="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 

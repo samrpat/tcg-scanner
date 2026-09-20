@@ -9,7 +9,7 @@ Two files and one command. No checkout, no build, no `make`:
 
 ```bash
 mkdir tcg-scanner && cd tcg-scanner
-curl -O https://<where you host it>/docker-compose.release.yml
+curl -O https://raw.githubusercontent.com/samrpat/tcg-scanner/main/docker-compose.release.yml
 printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 24)" > .env
 docker compose -f docker-compose.release.yml up -d
 ```
@@ -23,8 +23,8 @@ every manual step is a step somebody skips and then reports as a bug.
 ## Building and pushing
 
 ```bash
-export TCG_IMAGE=ghcr.io/you/tcg-scanner-api
-export TCG_WEB_IMAGE=ghcr.io/you/tcg-scanner-web
+export TCG_IMAGE=ghcr.io/samrpat/tcg-scanner-api
+export TCG_WEB_IMAGE=ghcr.io/samrpat/tcg-scanner-web
 ./scripts/release.sh v0.1.0
 ./scripts/release-check.sh $TCG_IMAGE:v0.1.0
 ```
